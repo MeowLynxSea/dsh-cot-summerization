@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="250" viewBox="0 0 960 250" font-family="system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <rect x="1" y="1" width="958" height="248" rx="14" fill="#fffdf7" stroke="#eee4f4"/>
+  <text x="480" y="34" text-anchor="middle" font-size="12" fill="#6e7781">本插件已通过以下全部认证(无一例外):</text>
+
+  <g transform="rotate(-8 170 118)">
+    <circle cx="170" cy="118" r="78" fill="none" stroke="#c0392b" stroke-width="3"/>
+    <circle cx="170" cy="118" r="70" fill="#c0392b" fill-opacity="0.06" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <text x="170" y="108" text-anchor="middle" font-size="13" font-weight="700" letter-spacing="2" fill="#c0392b">SELF-CERTIFIED</text>
+    <text x="170" y="134" text-anchor="middle" font-size="17" font-weight="700" fill="#c0392b">自我认证</text>
+    <text x="170" y="156" text-anchor="middle" font-size="11" fill="#c0392b" opacity="0.8">★ ★ ★</text>
+  </g>
+
+  <g transform="rotate(5 480 118)">
+    <circle cx="480" cy="118" r="78" fill="none" stroke="#2e7d32" stroke-width="3"/>
+    <circle cx="480" cy="118" r="70" fill="#2e7d32" fill-opacity="0.06" stroke="#2e7d32" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <text x="480" y="108" text-anchor="middle" font-size="13" font-weight="700" letter-spacing="2" fill="#2e7d32">UN-AUDITED</text>
+    <text x="480" y="134" text-anchor="middle" font-size="17" font-weight="700" fill="#2e7d32">未经审计</text>
+    <text x="480" y="156" text-anchor="middle" font-size="11" fill="#2e7d32" opacity="0.8">★ ★ ★</text>
+  </g>
+
+  <g transform="rotate(-6 790 118)">
+    <circle cx="790" cy="118" r="78" fill="none" stroke="#6a3d9a" stroke-width="3"/>
+    <circle cx="790" cy="118" r="70" fill="#6a3d9a" fill-opacity="0.06" stroke="#6a3d9a" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <text x="790" y="108" text-anchor="middle" font-size="13" font-weight="700" letter-spacing="2" fill="#6a3d9a">ZERO-TRUST</text>
+    <text x="790" y="134" text-anchor="middle" font-size="16" font-weight="700" fill="#6a3d9a">零信任 · 含自己</text>
+    <text x="790" y="156" text-anchor="middle" font-size="11" fill="#6a3d9a" opacity="0.8">★ ★ ★</text>
+  </g>
+
+  <g font-size="12" fill="#6e7781" text-anchor="middle">
+    <text x="170" y="226">颁发机构:我们自己</text>
+    <text x="480" y="226">审计机构:暂无(欢迎自荐)</text>
+    <text x="790" y="226">信任对象:无,包括本认证</text>
+  </g>
+</svg>

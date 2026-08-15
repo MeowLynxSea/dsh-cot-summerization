@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="340" viewBox="0 0 960 340" font-family="system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="nk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#c9a0e8"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="958" height="338" rx="14" fill="#fffdf7" stroke="#eee4f4"/>
+  <text x="480" y="44" text-anchor="middle" font-size="19" font-weight="700" fill="#4a3660">Nekomimi Boundary Protocol™ 喵容性边界协议</text>
+  <text x="480" y="68" text-anchor="middle" font-size="12" fill="#8b7fa3">猫娘以「喵~」结束子句,而非标点。传统分句器在此崩溃——我们没有。</text>
+
+  <g>
+    <circle cx="880" cy="52" r="20" fill="#ffd9ea" stroke="#b36591" stroke-width="2.5"/>
+    <path d="M 864 40 L 862 22 L 878 32 Z" fill="#ffd9ea" stroke="#b36591" stroke-width="2.5"/>
+    <path d="M 896 40 L 898 22 L 882 32 Z" fill="#ffd9ea" stroke="#b36591" stroke-width="2.5"/>
+    <circle cx="873" cy="50" r="2.5" fill="#4a3660"/>
+    <circle cx="887" cy="50" r="2.5" fill="#4a3660"/>
+    <path d="M 876 58 q 4 4 8 0" fill="none" stroke="#b36591" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M 858 52 l -12 -2 M 858 58 l -12 2 M 902 52 l 12 -2 M 902 58 l 12 2" stroke="#b36591" stroke-width="1.2" stroke-linecap="round"/>
+  </g>
+
+  <rect x="70" y="96" width="820" height="60" rx="12" fill="#ffffff" stroke="#e5dff5"/>
+  <g font-size="16" fill="#3b2f52">
+    <text x="252" y="132" textLength="168" lengthAdjust="spacing">所以数组永远凑不齐喵~</text>
+    <text x="428" y="132" textLength="136" lengthAdjust="spacing">故无有限步保证喵~</text>
+    <text x="572" y="132" textLength="136" lengthAdjust="spacing">但可以逐步逼近喵~</text>
+  </g>
+
+  <g stroke="#c9a0e8" stroke-dasharray="4 3">
+    <line x1="420" y1="152" x2="420" y2="100"/>
+    <line x1="564" y1="152" x2="564" y2="100"/>
+    <line x1="708" y1="152" x2="708" y2="100"/>
+  </g>
+  <g fill="#f3e8fb" stroke="#c9a0e8">
+    <circle cx="420" cy="86" r="9"/>
+    <circle cx="564" cy="86" r="9"/>
+    <circle cx="708" cy="86" r="9"/>
+  </g>
+  <g fill="#7c4dbd" font-size="11" text-anchor="middle">
+    <text x="420" y="90">✓</text>
+    <text x="564" y="90">✓</text>
+    <text x="708" y="90">✓</text>
+  </g>
+  <text x="730" y="90" font-size="10" fill="#8b7fa3">← 自动检测边界</text>
+
+  <rect x="70" y="178" width="396" height="112" rx="12" fill="#faf6ff" stroke="#e5dff5"/>
+  <text x="90" y="206" font-size="13" font-weight="700" fill="#4a3660">归一化层 Normalizer</text>
+  <g font-size="12" fill="#3b2f52">
+    <text x="90" y="232">· 剥离 喵 / ~ / 〜 / ～ 与全部空白</text>
+    <text x="90" y="254">· 大小写折叠后再比对</text>
+    <text x="90" y="276">· 之后才计算 bigram 相似度</text>
+  </g>
+
+  <rect x="494" y="178" width="396" height="112" rx="12" fill="#faf6ff" stroke="#e5dff5"/>
+  <text x="514" y="206" font-size="13" font-weight="700" fill="#4a3660">为什么这是刚需</text>
+  <g font-size="12" fill="#3b2f52">
+    <text x="514" y="232">· 0.65 相似度阈值对猫娘同样有效</text>
+    <text x="514" y="254">· 重复结论常以「喵~」变体卷土重来</text>
+    <text x="514" y="276">· LCS 连续核心检测一并伺候</text>
+  </g>
+
+  <text x="480" y="318" text-anchor="middle" font-size="11" fill="#8b7fa3">一致性测试:样本一只,很乖,已通过。style: catgirl 为真实配置项,详见配置表。</text>
+</svg>

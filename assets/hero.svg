@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="300" viewBox="0 0 960 300">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0f1c"/>
+      <stop offset="1" stop-color="#171d3a"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#232b52"/>
+      <stop offset="1" stop-color="#10131f"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#58a6ff"/>
+      <stop offset="1" stop-color="#bc8cff"/>
+    </linearGradient>
+    <radialGradient id="iris" cx="0.4" cy="0.35" r="0.9">
+      <stop offset="0" stop-color="#9be8ff"/>
+      <stop offset="1" stop-color="#2f81f7"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#ffffff" stroke-opacity="0.04"/>
+    </pattern>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="36"/>
+    </filter>
+  </defs>
+  <rect width="960" height="300" fill="url(#bg)"/>
+  <rect width="960" height="300" fill="url(#grid)"/>
+  <ellipse cx="830" cy="40" rx="250" ry="110" fill="#bc8cff" opacity="0.16" filter="url(#blur)"/>
+  <ellipse cx="110" cy="270" rx="230" ry="100" fill="#2f81f7" opacity="0.15" filter="url(#blur)"/>
+
+  <g transform="translate(52,64) scale(0.72)">
+    <circle cx="120" cy="120" r="100" fill="none" stroke="#58a6ff" stroke-opacity="0.35" stroke-dasharray="2 9"/>
+    <rect x="10" y="10" width="220" height="220" rx="48" fill="url(#tile)" stroke="url(#rim)" stroke-width="2"/>
+    <path d="M 38 120 C 74 74, 166 74, 202 120 C 166 166, 74 166, 38 120 Z" fill="#0d1130" fill-opacity="0.9" stroke="#9db8ff" stroke-width="2.5"/>
+    <circle cx="120" cy="120" r="34" fill="url(#iris)" stroke="#e6edf3" stroke-width="1.2" stroke-opacity="0.7"/>
+    <path d="M 106 112 v -8 a 14 14 0 0 1 28 0 v 8" fill="none" stroke="#ffd580" stroke-width="5" stroke-linecap="round"/>
+    <rect x="98" y="112" width="44" height="34" rx="7" fill="#ffd580"/>
+    <circle cx="120" cy="124" r="4" fill="#1b2240"/>
+    <rect x="118" y="124" width="4" height="10" rx="2" fill="#1b2240"/>
+    <path d="M 186 62 l 2.4 7.6 l 7.6 2.4 l -7.6 2.4 l -2.4 7.6 l -2.4 -7.6 l -7.6 -2.4 l 7.6 -2.4 Z" fill="#ffd580"/>
+    <path d="M 58 172 l 1.6 5 l 5 1.6 l -5 1.6 l -1.6 5 l -1.6 -5 l -5 -1.6 l 5 -1.6 Z" fill="#7ee0ff"/>
+  </g>
+
+  <text x="272" y="130" font-family="ui-monospace,'SF Mono',Consolas,Menlo,monospace" font-size="38" font-weight="700" fill="#e6edf3">dsh-cot-summerization</text>
+  <text x="276" y="170" font-family="system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif" font-size="21" font-weight="600" fill="#a5c8ff">为开源模型献上闭源级思维链隐身体验</text>
+  <text x="276" y="198" font-family="ui-monospace,'SF Mono',Consolas,Menlo,monospace" font-size="13" fill="#7d8590">Enterprise-Grade CoT Concealment · Summer Edition</text>
+
+  <g font-family="ui-monospace,'SF Mono',Consolas,Menlo,monospace" font-size="13">
+    <rect x="276" y="224" width="128" height="28" rx="14" fill="none" stroke="#58a6ff"/>
+    <text x="340" y="243" fill="#79b8ff" text-anchor="middle">Zero-Trust</text>
+    <rect x="416" y="224" width="164" height="28" rx="14" fill="none" stroke="#ff7b97"/>
+    <text x="498" y="243" fill="#ffa8c0" text-anchor="middle" font-family="system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">军规级神秘感</text>
+    <rect x="592" y="224" width="286" height="28" rx="14" fill="none" stroke="#ffd580"/>
+    <text x="735" y="243" fill="#ffe3a3" text-anchor="middle">Information Never Existed™</text>
+  </g>
+
+  <g transform="rotate(-8 858 78)">
+    <rect x="800" y="64" width="116" height="28" rx="6" fill="#238636" stroke="#2ea043"/>
+    <text x="858" y="83" font-family="ui-monospace,'SF Mono',Consolas,Menlo,monospace" font-size="13" fill="#ffffff" text-anchor="middle">v0.3.0 夏</text>
+  </g>
+  <text x="940" y="290" font-family="ui-monospace,'SF Mono',Consolas,Menlo,monospace" font-size="10" fill="#484f58" text-anchor="end">hide once, summarize forever</text>
+</svg>

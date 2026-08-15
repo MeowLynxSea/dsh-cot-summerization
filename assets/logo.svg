@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#232b52"/>
+      <stop offset="1" stop-color="#10131f"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#58a6ff"/>
+      <stop offset="1" stop-color="#bc8cff"/>
+    </linearGradient>
+    <radialGradient id="iris" cx="0.4" cy="0.35" r="0.9">
+      <stop offset="0" stop-color="#9be8ff"/>
+      <stop offset="1" stop-color="#2f81f7"/>
+    </radialGradient>
+  </defs>
+  <circle cx="120" cy="120" r="98" fill="none" stroke="#58a6ff" stroke-opacity="0.35" stroke-dasharray="2 9"/>
+  <rect x="10" y="10" width="220" height="220" rx="48" fill="url(#tile)" stroke="url(#rim)" stroke-width="2"/>
+  <path d="M 38 120 C 74 74, 166 74, 202 120 C 166 166, 74 166, 38 120 Z" fill="#0d1130" fill-opacity="0.9" stroke="#9db8ff" stroke-width="2.5"/>
+  <circle cx="120" cy="120" r="34" fill="url(#iris)" stroke="#e6edf3" stroke-width="1.2" stroke-opacity="0.7"/>
+  <path d="M 106 112 v -8 a 14 14 0 0 1 28 0 v 8" fill="none" stroke="#ffd580" stroke-width="5" stroke-linecap="round"/>
+  <rect x="98" y="112" width="44" height="34" rx="7" fill="#ffd580"/>
+  <circle cx="120" cy="124" r="4" fill="#1b2240"/>
+  <rect x="118" y="124" width="4" height="10" rx="2" fill="#1b2240"/>
+  <path d="M 186 62 l 2.4 7.6 l 7.6 2.4 l -7.6 2.4 l -2.4 7.6 l -2.4 -7.6 l -7.6 -2.4 l 7.6 -2.4 Z" fill="#ffd580"/>
+  <path d="M 58 172 l 1.6 5 l 5 1.6 l -5 1.6 l -1.6 5 l -1.6 -5 l -5 -1.6 l 5 -1.6 Z" fill="#7ee0ff"/>
+</svg>

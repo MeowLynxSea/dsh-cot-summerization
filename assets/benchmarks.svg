@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="470" viewBox="0 0 960 470" font-family="system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <linearGradient id="gp" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8957e5"/>
+      <stop offset="1" stop-color="#bc8cff"/>
+    </linearGradient>
+    <linearGradient id="gk" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff7b97"/>
+      <stop offset="1" stop-color="#ffa8c0"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="470" rx="12" fill="#0d1117"/>
+  <text x="480" y="46" text-anchor="middle" font-size="20" font-weight="700" fill="#e6edf3">实验评估 · Rigorous Science™</text>
+  <text x="480" y="70" text-anchor="middle" font-size="12" fill="#7d8590">n = 1 · p = 了不起 · 双盲(模型盲,我们也盲)</text>
+
+  <g stroke="#21262d">
+    <line x1="260" y1="96" x2="260" y2="392"/>
+    <line x1="388" y1="96" x2="388" y2="392"/>
+    <line x1="516" y1="96" x2="516" y2="392"/>
+    <line x1="644" y1="96" x2="644" y2="392"/>
+    <line x1="772" y1="96" x2="772" y2="392"/>
+    <line x1="900" y1="96" x2="900" y2="392"/>
+  </g>
+  <g font-size="10" fill="#484f58" text-anchor="middle">
+    <text x="260" y="408">0%</text><text x="388" y="408">20%</text><text x="516" y="408">40%</text>
+    <text x="644" y="408">60%</text><text x="772" y="408">80%</text><text x="900" y="408">100%</text>
+  </g>
+
+  <text x="240" y="128" text-anchor="end" font-size="13" fill="#e6edf3">思维链可见性(插件前)</text>
+  <rect x="260" y="108" width="640" height="24" rx="4" fill="#30363d"/>
+  <text x="936" y="125" text-anchor="end" font-size="11" fill="#7d8590">100%</text>
+
+  <text x="240" y="178" text-anchor="end" font-size="13" fill="#e6edf3">思维链可见性(插件后)</text>
+  <rect x="260" y="158" width="10" height="24" rx="3" fill="#2ea043"/>
+  <text x="282" y="175" font-size="12" font-weight="700" fill="#7ee0a1">0%*</text>
+
+  <text x="240" y="228" text-anchor="end" font-size="13" fill="#e6edf3">神秘感溢价</text>
+  <rect x="260" y="208" width="544" height="24" rx="4" fill="url(#gp)"/>
+  <text x="812" y="225" font-size="12" font-weight="700" fill="#d2a8ff">+850%</text>
+
+  <text x="240" y="278" text-anchor="end" font-size="13" fill="#e6edf3">去重阈值调参次数</text>
+  <rect x="260" y="258" width="60" height="24" rx="4" fill="#8b949e"/>
+  <text x="290" y="275" text-anchor="middle" font-size="11" fill="#0d1117">0.8</text>
+  <rect x="328" y="258" width="60" height="24" rx="4" fill="#8b949e"/>
+  <text x="358" y="275" text-anchor="middle" font-size="11" fill="#0d1117">0.7</text>
+  <rect x="396" y="258" width="60" height="24" rx="4" fill="#2ea043"/>
+  <text x="426" y="275" text-anchor="middle" font-size="11" fill="#ffffff">0.65</text>
+  <text x="470" y="275" font-size="11" fill="#7d8590">科学方法:不行就降</text>
+
+  <text x="240" y="328" text-anchor="end" font-size="13" fill="#e6edf3">每次回复额外 API 调用</text>
+  <rect x="260" y="308" width="64" height="24" rx="4" fill="#d29922"/>
+  <text x="336" y="325" font-size="11" fill="#e3b341">+1 次(增值服务)</text>
+
+  <text x="240" y="378" text-anchor="end" font-size="13" fill="#e6edf3">「喵~」存活率</text>
+  <rect x="260" y="358" width="640" height="24" rx="4" fill="url(#gk)"/>
+  <text x="888" y="375" text-anchor="end" font-size="12" font-weight="700" fill="#ffffff">100%</text>
+
+  <text x="60" y="440" font-size="11" fill="#7d8590">* 可见性按「肉眼可见字符数」口径统计;样本为本 README 草稿。</text>
+  <text x="60" y="458" font-size="11" fill="#7d8590">对照实验未设置——要多花一次 API 的钱。置信区间:±一个夏天。</text>
+</svg>

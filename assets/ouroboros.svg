@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="340" viewBox="0 0 960 340" font-family="system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#150d2e"/>
+      <stop offset="0.55" stop-color="#3b1d5e"/>
+      <stop offset="1" stop-color="#6b2d70"/>
+    </linearGradient>
+    <marker id="oc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#7ee0ff"/>
+    </marker>
+    <marker id="og" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#ffd580"/>
+    </marker>
+  </defs>
+  <rect width="960" height="340" rx="12" fill="url(#sun)"/>
+  <g fill="#ffffff" opacity="0.5">
+    <circle cx="90" cy="60" r="1.5"/><circle cx="210" cy="110" r="1"/><circle cx="330" cy="52" r="1.3"/>
+    <circle cx="470" cy="120" r="1"/><circle cx="600" cy="70" r="1.4"/><circle cx="700" cy="96" r="1"/>
+    <circle cx="840" cy="56" r="1.5"/><circle cx="910" cy="130" r="1.2"/><circle cx="60" cy="180" r="1.2"/>
+  </g>
+  <text x="480" y="46" text-anchor="middle" font-size="20" font-weight="700" fill="#ffd580">路线图 · The Infinite Summer™</text>
+  <text x="480" y="70" text-anchor="middle" font-size="12" fill="#d0a8ff">喵~ 收敛定理:任何思维链经 k 次摘要后收敛于单句号(或「喵~」)</text>
+
+  <g fill="#0d1130">
+    <circle cx="150" cy="205" r="62" stroke="#8957e5" stroke-width="2.5"/>
+    <circle cx="334" cy="185" r="50" stroke="#bc8cff" stroke-width="2.5"/>
+    <circle cx="478" cy="163" r="40" stroke="#d2a8ff" stroke-width="2.5"/>
+    <circle cx="596" cy="144" r="31" stroke="#e3b341" stroke-width="2.5"/>
+    <circle cx="684" cy="132" r="22" stroke="#f7a8c4" stroke-width="2.5"/>
+    <circle cx="756" cy="124" r="16" stroke="#ffd580" stroke-width="2.5" fill="#2b1a3d"/>
+    <circle cx="800" cy="118" r="9" stroke="#ffd580" stroke-width="2" fill="#2b1a3d"/>
+  </g>
+  <g text-anchor="middle">
+    <text x="150" y="199" font-size="13" font-weight="700" fill="#e6edf3">思维链</text>
+    <text x="150" y="221" font-size="11" fill="#7d8590">~8,000 字</text>
+    <text x="334" y="180" font-size="13" font-weight="700" fill="#e6edf3">摘要</text>
+    <text x="334" y="202" font-size="11" fill="#7d8590">≤800 字</text>
+    <text x="478" y="159" font-size="13" font-weight="700" fill="#e6edf3">摘要²</text>
+    <text x="478" y="179" font-size="11" fill="#7d8590">200</text>
+    <text x="596" y="141" font-size="12" font-weight="700" fill="#e6edf3">摘要³</text>
+    <text x="596" y="158" font-size="10" fill="#7d8590">50</text>
+    <text x="684" y="129" font-size="11" fill="#e6edf3">…</text>
+    <text x="684" y="143" font-size="10" fill="#7d8590">12</text>
+    <text x="756" y="128" font-size="10" fill="#ffd580">喵~</text>
+    <text x="800" y="121" font-size="8" fill="#ffd580">。</text>
+  </g>
+  <g fill="none" stroke="#7ee0ff" stroke-width="1.8">
+    <path d="M 218 196 C 238 190, 252 186, 268 182" marker-end="url(#oc)"/>
+    <path d="M 388 174 C 402 170, 414 166, 428 163" marker-end="url(#oc)"/>
+    <path d="M 522 156 C 532 152, 542 149, 556 147" marker-end="url(#oc)"/>
+    <path d="M 631 138 C 640 134, 648 132, 656 131" marker-end="url(#oc)"/>
+    <path d="M 710 128 C 718 125, 724 124, 732 123" marker-end="url(#oc)"/>
+  </g>
+  <path d="M 760 100 C 640 36, 380 36, 302 132" fill="none" stroke="#ffd580" stroke-width="1.5" stroke-dasharray="6 6" opacity="0.8" marker-end="url(#og)"/>
+  <text x="528" y="56" text-anchor="middle" font-size="11" fill="#ffe3a3">v2.0 计划:对摘要的摘要继续摘要(省字数,不省 API)</text>
+  <text x="480" y="316" text-anchor="middle" font-size="11" fill="#b09ac2">我们不生产结论,我们只是思维链的搬运工——搬到小模型那儿去。</text>
+</svg>

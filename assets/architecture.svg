@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="580" viewBox="0 0 960 580" font-family="system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <linearGradient id="core" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a1440"/>
+      <stop offset="1" stop-color="#241a52"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#bc8cff"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#3fb950"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#f85149"/>
+    </marker>
+  </defs>
+  <rect width="960" height="580" rx="12" fill="#0d1117"/>
+  <text x="480" y="46" text-anchor="middle" font-size="21" font-weight="700" fill="#e6edf3">系统架构 · Information Never Existed™ 管线</text>
+  <text x="480" y="70" text-anchor="middle" font-size="12" fill="#7d8590">所有箭头均经过风险评估;红色虚线代表「永不发生」</text>
+
+  <rect x="48" y="104" width="216" height="68" rx="12" fill="#161b22" stroke="#3d444d"/>
+  <text x="156" y="134" text-anchor="middle" font-size="14" font-weight="600" fill="#e6edf3">大模型(开源)</text>
+  <text x="156" y="156" text-anchor="middle" font-size="11" fill="#7d8590">慷慨 · 全裸 · 思维链完全可见</text>
+
+  <rect x="696" y="104" width="216" height="68" rx="12" fill="#161b22" stroke="#3d444d"/>
+  <text x="804" y="134" text-anchor="middle" font-size="14" font-weight="600" fill="#e6edf3">小模型改写员</text>
+  <text x="804" y="156" text-anchor="middle" font-size="11" fill="#7d8590">任意 Chat Completions API</text>
+
+  <rect x="252" y="212" width="456" height="216" rx="16" fill="url(#core)" stroke="#a371f7" stroke-width="1.5" filter="url(#glow)"/>
+  <text x="480" y="246" text-anchor="middle" font-size="17" font-weight="700" fill="#e6edf3">CoT 隐身引擎</text>
+  <text x="480" y="268" text-anchor="middle" font-size="11" font-family="ui-monospace,Consolas,Menlo,monospace" fill="#bc8cff">@ llm/stream 瀑布拦截层</text>
+  <g fill="#10131f" stroke="#30363d">
+    <rect x="274" y="286" width="200" height="56" rx="8"/>
+    <rect x="486" y="286" width="200" height="56" rx="8"/>
+    <rect x="274" y="352" width="200" height="56" rx="8"/>
+    <rect x="486" y="352" width="200" height="56" rx="8"/>
+  </g>
+  <g text-anchor="middle">
+    <text x="374" y="310" font-size="13" font-weight="600" fill="#e6edf3">增量吞噬</text>
+    <text x="374" y="330" font-size="10" font-family="ui-monospace,Consolas,Menlo,monospace" fill="#7d8590">raw deltas → 内存</text>
+    <text x="586" y="310" font-size="13" font-weight="600" fill="#e6edf3">句子边界触发</text>
+    <text x="586" y="330" font-size="10" font-family="ui-monospace,Consolas,Menlo,monospace" fill="#7d8590">。!?…~ 喵~ 全支持</text>
+    <text x="374" y="376" font-size="13" font-weight="600" fill="#e6edf3">双阈值节流</text>
+    <text x="374" y="396" font-size="10" font-family="ui-monospace,Consolas,Menlo,monospace" fill="#7d8590">chunkChars=300 · 4s</text>
+    <text x="586" y="376" font-size="13" font-weight="600" fill="#e6edf3">近重复消除</text>
+    <text x="586" y="396" font-size="10" font-family="ui-monospace,Consolas,Menlo,monospace" fill="#7d8590">BioGram™ 0.65 + LCS</text>
+  </g>
+
+  <rect x="330" y="482" width="300" height="64" rx="12" fill="#0f2417" stroke="#2ea043"/>
+  <text x="480" y="508" text-anchor="middle" font-size="14" font-weight="600" fill="#7ee0a1">UI「Think」折叠行</text>
+  <text x="480" y="530" text-anchor="middle" font-size="11" fill="#7d8590">摘要 · 安全 · 得体 · 神秘</text>
+
+  <rect x="48" y="482" width="216" height="64" rx="12" fill="#2d1117" stroke="#f85149" stroke-dasharray="5 4"/>
+  <text x="156" y="508" text-anchor="middle" font-size="12" fill="#ff7b72">会话日志 / 模型历史</text>
+  <text x="156" y="530" text-anchor="middle" font-size="11" fill="#ff7b72">你的视网膜</text>
+
+  <path d="M 264 160 C 300 190, 320 196, 348 206" fill="none" stroke="#bc8cff" stroke-width="2" marker-end="url(#ap)"/>
+  <text x="296" y="176" font-size="11" fill="#ffa8c0">原始思维链(高危 · 全裸)</text>
+  <path d="M 640 240 C 700 224, 740 200, 768 176" fill="none" stroke="#3fb950" stroke-width="2" marker-end="url(#ag)"/>
+  <text x="668" y="208" font-size="11" fill="#7ee0a1">仅新到达的段落</text>
+  <path d="M 804 176 C 804 330, 730 452, 590 480" fill="none" stroke="#3fb950" stroke-width="2" marker-end="url(#ag)"/>
+  <text x="762" y="332" text-anchor="middle" font-size="11" fill="#7ee0a1">改写后的摘要</text>
+  <path d="M 480 428 L 480 476" fill="none" stroke="#3fb950" stroke-width="2" marker-end="url(#ag)"/>
+  <text x="492" y="456" font-size="10" fill="#7d8590">增量拼接</text>
+  <path d="M 300 428 C 240 452, 200 458, 152 478" fill="none" stroke="#f85149" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+  <text x="225" y="444" text-anchor="middle" font-size="11" fill="#ff7b72">✗ 原始 CoT 永不落地</text>
+
+  <text x="936" y="562" text-anchor="end" font-size="10" font-family="ui-monospace,Consolas,Menlo,monospace" fill="#7d8590">AbortSignal.any(caller, timeout) — 连浪费都是原子性的</text>
+  <g font-size="10" fill="#7d8590">
+    <rect x="48" y="552" width="10" height="10" rx="2" fill="#a371f7"/>
+    <text x="64" y="561">数据流</text>
+    <rect x="116" y="552" width="10" height="10" rx="2" fill="#2ea043"/>
+    <text x="132" y="561">安全输出</text>
+    <rect x="184" y="552" width="10" height="10" rx="2" fill="none" stroke="#f85149" stroke-dasharray="2 2"/>
+    <text x="200" y="561">永不落地</text>
+  </g>
+</svg>
