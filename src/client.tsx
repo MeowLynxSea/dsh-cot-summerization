@@ -261,6 +261,15 @@ export function apply(ctx: ClientContext): void {
   }, 'dsh-cot-summerization: styles')
   const t = ctx.locale.bind(NS)
   const scope = ctx.settingsScope.bind<CotSummarizerConfig>({ namespace: NS })
+  // diagnostics: dump the wire describe result into the document title
+  setTimeout(() => {
+    void ctx.get('connection').api.settings.describe({}).then((response) => {
+      const namespaces = response.result.value?.namespaces?.map((n: { ns: string }) => n.ns) ?? []
+      document.title = `COT-DIAG: ${JSON.stringify(namespaces)}`
+    }).catch((error: unknown) => {
+      document.title = `COT-DIAG-ERR: ${error instanceof Error ? error.message : String(error)}`
+    })
+  }, 4000)
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'cot-summarizer',
