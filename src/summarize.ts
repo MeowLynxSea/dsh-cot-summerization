@@ -30,11 +30,12 @@ export interface SummarizeOptions {
 /**
  * Instruction used when a previous partial summary exists: summarize only
  * the new reasoning segment as a natural continuation. `{segmentChars}` is
- * replaced with the per-segment length budget derived from the summary cap.
+ * replaced with the per-segment length budget derived from the summary cap;
+ * `{languageClause}` with the forced language (or the follow-the-raw rule).
  */
 const SEGMENT_INSTRUCTION = `The chain of thought below is streaming, and this message contains ONLY the reasoning that arrived since the previous summary. Your previous summary so far is quoted at the end — read it for continuity and style, but do NOT repeat it.
 
-Summarize the new reasoning below concisely, in the SAME language as the new reasoning. Your output will be appended directly after the previous summary, so it must read as a seamless continuation of it. Do not quote the raw reasoning verbatim and do not mention the summarization process.
+Summarize the new reasoning below concisely, in {languageClause}. Your output will be appended directly after the previous summary, so it must read as a seamless continuation of it. Do not quote the raw reasoning verbatim and do not mention the summarization process.
 
 Output ONLY the summary of the new reasoning, at most {segmentChars} characters.`
 
@@ -96,7 +97,9 @@ export async function summarizeCoT(
 
   const userContent = options?.previousSummary === undefined
     ? raw
-    : `${SEGMENT_INSTRUCTION.replace('{segmentChars}', String(Math.max(80, Math.floor(cfg.maxSummaryChars / 4))))}\n\nNew reasoning to summarize:\n\n${raw}\n\nPrevious summary so far (do not repeat it):\n\n${options.previousSummary}`
+    : `${SEGMENT_INSTRUCTION
+      .replace('{segmentChars}', String(Math.max(80, Math.floor(cfg.maxSummaryChars / 4))))
+      .replace('{languageClause}', cfg.language !== '' ? cfg.language : 'the SAME language as the new reasoning')}\n\nNew reasoning to summarize:\n\n${raw}\n\nPrevious summary so far (do not repeat it):\n\n${options.previousSummary}`
 
   let response: Response
   try {

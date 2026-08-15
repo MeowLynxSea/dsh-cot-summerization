@@ -240,6 +240,25 @@ async function testMultiReasoningBlocks() {
   console.log('ok - multi-reasoning-block streams continue segmenting across blocks')
 }
 
+async function testStyleAndLanguageComposition() {
+  const forced = resolveConfig({ language: '中文', style: 'segmented' })
+  assert.ok(forced.systemPrompt.includes('Write the summary in 中文.'), 'language override appends to the system prompt')
+  assert.ok(forced.systemPrompt.includes('paragraph title line'), 'style preset appends to the system prompt')
+
+  const custom = resolveConfig({ style: 'custom', customStyle: '用打油诗的风格总结' })
+  assert.ok(custom.systemPrompt.includes('用打油诗的风格总结'), 'custom style prompt appends verbatim')
+  assert.equal(custom.style, 'custom')
+
+  const plain = resolveConfig({})
+  assert.ok(plain.systemPrompt.includes('SAME language as the raw reasoning'))
+  assert.ok(!plain.systemPrompt.includes('Write the summary in'))
+  assert.ok(!plain.systemPrompt.includes('paragraph title line'))
+
+  assert.throws(() => resolveConfig({ style: 'surreal' }), /unknown summary style/)
+  console.log('ok - language override and style presets/custom compose into the system prompt')
+}
+
+await testStyleAndLanguageComposition()
 await testStreamingPartials()
 await testIncrementalOff()
 await testNoReasoningPassThrough()

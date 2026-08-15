@@ -21,6 +21,22 @@ export const COT_SUMMARIZER_SETTINGS_NAMESPACE = settingsNamespace('cot-summariz
 export const DEFAULT_BASE_URL = 'https://api.deepseek.com/v1'
 export const DEFAULT_MODEL = 'deepseek-chat'
 
+/** Selectable summary styles; `none` keeps the plain prompt, `custom` uses `customStyle`. */
+export const SUMMARY_STYLES = ['none', 'first-person', 'rigorous', 'catgirl', 'segmented', 'custom'] as const
+export type SummaryStyle = (typeof SUMMARY_STYLES)[number]
+
+/**
+ * System-prompt fragments appended when a preset style is selected. They
+ * come after the user's own prompt (and the language override), so an
+ * explicit style wins over prompt copy that contradicts it.
+ */
+export const STYLE_PROMPTS: Record<Exclude<SummaryStyle, 'none' | 'custom'>, string> = {
+  'first-person': 'Write the summary from the assistant\'s first-person perspective, using "I will" / "I need to" openings where natural (for example: "I will first analyze the constraints, then derive the algorithm.").',
+  rigorous: 'Write in a rigorous, precise, formal style: use exact technical terms, state every condition and conclusion explicitly, avoid casual or vague wording.',
+  catgirl: 'Write in an adorable catgirl persona (喵~): playful, warm and lively, with catgirl interjections and expressions, while keeping the content accurate and complete.',
+  segmented: 'Structure the summary in segments: each segment is a short paragraph title line, followed by a blank line, followed by the detailed explanation of that part, followed by a blank line before the next segment.',
+}
+
 /**
  * Default summarization prompt. `{maxSummaryChars}` is replaced with the
  * configured summary length cap; custom prompts may use the same placeholder.
@@ -43,6 +59,15 @@ export interface CotSummarizerConfig {
   model?: string
   /** Summarization system prompt; `{maxSummaryChars}` is substituted. */
   systemPrompt?: string
+  /**
+   * Force the summary language as free text (e.g. `中文`, `English`); when
+   * blank the summary follows the raw reasoning's language.
+   */
+  language?: string
+  /** Presentation style preset appended to the summarization prompt. */
+  style?: SummaryStyle
+  /** Free-text style prompt used when `style` is `custom`. */
+  customStyle?: string
   /** Raw reasoning shorter than this is shown verbatim without a summarizer call. */
   minReasoningChars?: number
   /** Target summary length cap, substituted into the default prompt. */
@@ -72,6 +97,9 @@ export const Config: Schema<CotSummarizerConfig> = z.object({
   apiKey: z.string().default(''),
   model: z.string().default(DEFAULT_MODEL),
   systemPrompt: z.string().default(DEFAULT_SYSTEM_PROMPT),
+  language: z.string().default(''),
+  style: z.union(SUMMARY_STYLES).default('none'),
+  customStyle: z.string().default(''),
   minReasoningChars: z.number().default(32),
   maxSummaryChars: z.number().default(800),
   timeoutMs: z.number().default(30000),
@@ -88,6 +116,9 @@ export interface ResolvedCotSummarizerConfig {
   apiKey: string
   model: string
   systemPrompt: string
+  language: string
+  style: SummaryStyle
+  customStyle: string
   minReasoningChars: number
   maxSummaryChars: number
   timeoutMs: number
@@ -113,6 +144,9 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
   const incremental = config.incremental ?? true
   const chunkChars = config.chunkChars ?? 300
   const chunkIntervalMs = config.chunkIntervalMs ?? 4000
+  const language = (config.language ?? '').trim()
+  const style = config.style ?? 'none'
+  const customStyle = (config.customStyle ?? '').trim()
 
   if (minReasoningChars < 0) throw new Error('cot-summarizer: minReasoningChars must be >= 0')
   if (maxSummaryChars < 1) throw new Error('cot-summarizer: maxSummaryChars must be >= 1')
@@ -121,17 +155,30 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
   if (chunkIntervalMs < 500 || chunkIntervalMs > 600000) {
     throw new Error('cot-summarizer: chunkIntervalMs must be within [500, 600000]')
   }
+  if (!SUMMARY_STYLES.includes(style)) {
+    throw new Error(`cot-summarizer: unknown summary style "${String(style)}"`)
+  }
 
   const baseUrl = (config.baseUrl ?? DEFAULT_BASE_URL).trim().replace(/\/+$/, '')
   if (baseUrl === '') throw new Error('cot-summarizer: baseUrl must not be empty')
+
+  let systemPrompt = (config.systemPrompt ?? DEFAULT_SYSTEM_PROMPT).replace('{maxSummaryChars}', String(maxSummaryChars))
+  if (language !== '') systemPrompt += `\n\nWrite the summary in ${language}.`
+  if (style === 'custom') {
+    if (customStyle !== '') systemPrompt += `\n\n${customStyle}`
+  } else if (style !== 'none') {
+    systemPrompt += `\n\n${STYLE_PROMPTS[style]}`
+  }
 
   return {
     enabled,
     baseUrl,
     apiKey: config.apiKey ?? '',
     model: (config.model ?? DEFAULT_MODEL).trim(),
-    systemPrompt: (config.systemPrompt ?? DEFAULT_SYSTEM_PROMPT)
-      .replace('{maxSummaryChars}', String(maxSummaryChars)),
+    systemPrompt,
+    language,
+    style,
+    customStyle,
     minReasoningChars,
     maxSummaryChars,
     timeoutMs,

@@ -49,6 +49,8 @@ await ctx.plugin(plugin, {
   baseUrl: 'https://summarizer.test/v1',
   apiKey: 'secret-key',
   model: 'tiny',
+  language: '中文',
+  style: 'segmented',
 })
 ctx.llm.registerAdapter(['fake'], new FakeAdapter())
 
@@ -70,10 +72,13 @@ assert.equal(message.content[1].text, 'CLEAN SUMMARY')
 const serialized = JSON.stringify(message)
 assert.ok(!serialized.includes('RAW SECRET'), 'raw chain of thought must not appear anywhere')
 
-// The summarizer endpoint received one proper Chat Completions request.
+// The summarizer endpoint received one proper Chat Completions request with
+// the composed prompt (language override + segmented style preset).
 assert.equal(summaryCalls.length, 1)
 assert.equal(summaryCalls[0].url, 'https://summarizer.test/v1/chat/completions')
 assert.equal(summaryCalls[0].body.model, 'tiny')
 assert.equal(summaryCalls[0].body.messages[1].content, 'RAW SECRET PLAN for the user with more secret details')
+assert.ok(summaryCalls[0].body.messages[0].content.includes('Write the summary in 中文.'), 'language override composes into the system prompt')
+assert.ok(summaryCalls[0].body.messages[0].content.includes('paragraph title line'), 'style preset composes into the system prompt')
 
 console.log('integration test passed: raw CoT replaced by summary through the real llm/stream waterfall')

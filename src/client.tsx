@@ -44,6 +44,17 @@ const en: Record<string, string> = {
   modelHint: 'The "small model" that summarizes the raw reasoning.',
   systemPrompt: 'Summarization prompt',
   systemPromptHint: 'Override the default prompt. {maxSummaryChars} is substituted with the cap below.',
+  language: 'Summary language',
+  languageHint: 'Force the summary language (e.g. 中文, English). Leave blank to follow the raw reasoning\'s language.',
+  style: 'Summary style',
+  styleNone: 'Default (no style)',
+  styleFirstPerson: 'First-person "I will…"',
+  styleRigorous: 'Rigorous & precise',
+  styleCatgirl: 'Cute catgirl',
+  styleSegmented: 'Segmented (titles + details)',
+  styleCustom: 'Custom (write your own)',
+  customStyle: 'Custom style prompt',
+  customStyleHint: 'Appended to the summarization prompt: describe the tone, style, or format you want the summary to follow.',
   minReasoningChars: 'Minimum reasoning length',
   minReasoningCharsHint: 'Raw reasoning shorter than this (in characters) is shown verbatim without an API call.',
   maxSummaryChars: 'Summary length cap',
@@ -81,6 +92,17 @@ const zh: Record<string, string> = {
   modelHint: '用于总结原始思维链的“小模型”。',
   systemPrompt: '总结提示词',
   systemPromptHint: '覆盖默认提示词。{maxSummaryChars} 会被替换为下方的长度上限。',
+  language: '总结语言',
+  languageHint: '强制摘要使用的语言（如：中文、English）。留空则跟随原始推理的语言。',
+  style: '总结风格',
+  styleNone: '默认（无风格）',
+  styleFirstPerson: '第一人称 "I will…"',
+  styleRigorous: '严谨准确',
+  styleCatgirl: '可爱猫娘',
+  styleSegmented: '分段（标题+说明）',
+  styleCustom: '自定义（自己写风格）',
+  customStyle: '自定义风格提示',
+  customStyleHint: '追加到总结提示词末尾：描述你希望摘要遵循的语气、风格或格式。',
   minReasoningChars: '最短推理长度',
   minReasoningCharsHint: '短于该长度（字符数）的原始思维链直接展示，不调用接口。',
   maxSummaryChars: '摘要长度上限',
@@ -259,6 +281,36 @@ function SettingsSection({ t }: SettingsSectionProps) {
             onChange={(event) => { set('systemPrompt', event.target.value) }}
           />
         </Field>
+        <Field label={t('language')} hint={t('languageHint')}>
+          <input
+            type="text"
+            value={draft.language ?? ''}
+            placeholder="中文 / English"
+            onChange={(event) => { set('language', event.target.value) }}
+          />
+        </Field>
+        <Field label={t('style')}>
+          <select
+            value={draft.style ?? 'none'}
+            onChange={(event) => { set('style', event.target.value) }}
+          >
+            <option value="none">{t('styleNone')}</option>
+            <option value="first-person">{t('styleFirstPerson')}</option>
+            <option value="rigorous">{t('styleRigorous')}</option>
+            <option value="catgirl">{t('styleCatgirl')}</option>
+            <option value="segmented">{t('styleSegmented')}</option>
+            <option value="custom">{t('styleCustom')}</option>
+          </select>
+        </Field>
+        {draft.style === 'custom' && (
+          <Field label={t('customStyle')} hint={t('customStyleHint')}>
+            <textarea
+              rows={3}
+              value={draft.customStyle ?? ''}
+              onChange={(event) => { set('customStyle', event.target.value) }}
+            />
+          </Field>
+        )}
         <Field label={t('minReasoningChars')} hint={t('minReasoningCharsHint')}>
           <input
             type="number"

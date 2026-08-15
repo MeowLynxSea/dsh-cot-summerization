@@ -15,6 +15,15 @@ export declare const COT_SUMMARIZER_SETTINGS_NAMESPACE: import("@deepseek-ai/dsh
 /** Default provider endpoint; every field is user-overridable in settings. */
 export declare const DEFAULT_BASE_URL = "https://api.deepseek.com/v1";
 export declare const DEFAULT_MODEL = "deepseek-chat";
+/** Selectable summary styles; `none` keeps the plain prompt, `custom` uses `customStyle`. */
+export declare const SUMMARY_STYLES: readonly ["none", "first-person", "rigorous", "catgirl", "segmented", "custom"];
+export type SummaryStyle = (typeof SUMMARY_STYLES)[number];
+/**
+ * System-prompt fragments appended when a preset style is selected. They
+ * come after the user's own prompt (and the language override), so an
+ * explicit style wins over prompt copy that contradicts it.
+ */
+export declare const STYLE_PROMPTS: Record<Exclude<SummaryStyle, 'none' | 'custom'>, string>;
 /**
  * Default summarization prompt. `{maxSummaryChars}` is replaced with the
  * configured summary length cap; custom prompts may use the same placeholder.
@@ -32,6 +41,15 @@ export interface CotSummarizerConfig {
     model?: string;
     /** Summarization system prompt; `{maxSummaryChars}` is substituted. */
     systemPrompt?: string;
+    /**
+     * Force the summary language as free text (e.g. `中文`, `English`); when
+     * blank the summary follows the raw reasoning's language.
+     */
+    language?: string;
+    /** Presentation style preset appended to the summarization prompt. */
+    style?: SummaryStyle;
+    /** Free-text style prompt used when `style` is `custom`. */
+    customStyle?: string;
     /** Raw reasoning shorter than this is shown verbatim without a summarizer call. */
     minReasoningChars?: number;
     /** Target summary length cap, substituted into the default prompt. */
@@ -62,6 +80,9 @@ export interface ResolvedCotSummarizerConfig {
     apiKey: string;
     model: string;
     systemPrompt: string;
+    language: string;
+    style: SummaryStyle;
+    customStyle: string;
     minReasoningChars: number;
     maxSummaryChars: number;
     timeoutMs: number;
