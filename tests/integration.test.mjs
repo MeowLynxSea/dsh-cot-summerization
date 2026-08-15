@@ -1,12 +1,11 @@
 /**
  * Integration test: boots a real cordis Context with the real settings
- * provider, mounts dsh-cot-summerization, registers a fake LLM adapter that
- * emits raw reasoning, and proves the stream that comes out of
- * `ctx.llm.stream()` contains only the summarized reasoning.
+ * provider, mounts dsh-cot-summerization (from the built lib), registers a
+ * fake LLM adapter that emits raw reasoning, and proves the stream that
+ * comes out of `ctx.llm.stream()` contains only the summarized reasoning.
  *
- * Run from the web profile directory so @deepseek-ai/* and the plugin resolve
- * from the hoisted profile node_modules:
- *   cd ~/.dsh/profiles/web && node integration-test.mjs
+ * Run from the package directory (devDependencies resolve from the local
+ * node_modules): node tests/integration.test.mjs
  */
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -15,7 +14,7 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { FileSettingsProvider } from '@deepseek-ai/dsh-settings-file'
 import LlmRuntime, { BlockAssembler, LlmAdapter } from '@deepseek-ai/dsh-llm'
-import * as plugin from 'dsh-cot-summerization'
+import * as plugin from '../lib/index.js'
 
 // --- fake Chat Completions summarizer endpoint ---
 const summaryCalls = []
