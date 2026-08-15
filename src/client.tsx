@@ -1,20 +1,24 @@
 /**
  * dsh-cot-summerization — browser half. Registers the plugin's settings page
- * into the Web Client's settings shell (`settings.section` slot) and renders
- * the `cot-summarizer` namespace through the standard settings-scope
- * transport: every field write goes through `scope.set`, lands in the Host
- * settings document, and applies live.
+ * into the Web Client's settings shell (`settings.section` slot).
+ *
+ * The Web Client's generic settings transport only serves a fixed namespace
+ * whitelist, so — like the vision toolkit — the page reads and writes its
+ * namespace through a same-origin route (`/_dsh/cot-summarizer/settings`)
+ * mounted by the host half. The API key is never returned by the route;
+ * leaving the field blank keeps the stored key.
  * @module dsh-cot-summerization/client
  */
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { ClientContext, SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import { useEffect, useRef, useState } from 'react'
+import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { CotSummarizerConfig } from './config.ts'
 
 const NS = 'cot-summarizer'
+const SETTINGS_ROUTE = '/_dsh/cot-summarizer/settings'
 
 type LocaleKey = keyof typeof en
 
@@ -25,8 +29,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-type T = (key: LocaleKey) => string
-
 const en: Record<string, string> = {
   nav: 'CoT Summary',
   settingsTitle: 'Chain-of-Thought Summarization',
@@ -35,7 +37,9 @@ const en: Record<string, string> = {
   baseUrl: 'Base URL',
   baseUrlHint: 'Any Chat Completions-compatible endpoint.',
   apiKey: 'API key',
-  apiKeyHint: 'Sent as the Authorization bearer for summarizer requests.',
+  apiKeyConfiguredPlaceholder: 'Configured; leave blank to keep it',
+  apiKeyPlaceholder: 'Paste the API key',
+  apiKeyHint: 'Sent as the Authorization bearer for summarizer requests. Never shown again after saving.',
   model: 'Summarizer model',
   modelHint: 'The "small model" that summarizes the raw reasoning.',
   systemPrompt: 'Summarization prompt',
@@ -48,10 +52,12 @@ const en: Record<string, string> = {
   onError: 'On summarizer failure',
   onErrorHide: 'Hide reasoning',
   onErrorPassThrough: 'Pass raw reasoning through',
-  save: 'Saved',
+  save: 'Save',
   saving: 'Saving…',
+  saved: 'Saved',
   loading: 'Loading…',
-  unavailable: 'Settings are unavailable in this connection.',
+  unavailable: 'Settings are unavailable.',
+  failed: 'Failed to save:',
 }
 
 const zh: Record<string, string> = {
@@ -62,7 +68,9 @@ const zh: Record<string, string> = {
   baseUrl: '接口地址',
   baseUrlHint: '任意兼容 Chat Completions 的接口地址。',
   apiKey: 'API 密钥',
-  apiKeyHint: '总结请求会以 Bearer 形式携带该密钥。',
+  apiKeyConfiguredPlaceholder: '已配置，留空保持不变',
+  apiKeyPlaceholder: '粘贴 API 密钥',
+  apiKeyHint: '总结请求会以 Bearer 形式携带该密钥。保存后不再显示。',
   model: '总结模型',
   modelHint: '用于总结原始思维链的“小模型”。',
   systemPrompt: '总结提示词',
@@ -75,14 +83,51 @@ const zh: Record<string, string> = {
   onError: '总结失败时',
   onErrorHide: '隐藏思维链',
   onErrorPassThrough: '展示原始思维链',
-  save: '已保存',
+  save: '保存',
   saving: '保存中…',
+  saved: '已保存',
   loading: '加载中…',
-  unavailable: '当前连接下设置不可用。',
+  unavailable: '设置不可用。',
+  failed: '保存失败：',
+}
+
+type T = (key: LocaleKey) => string
+
+interface SettingsView {
+  settings: CotSummarizerConfig
+  apiKeyConfigured: boolean
+  revision: number
+}
+
+async function fetchView(): Promise<SettingsView> {
+  const response = await fetch(SETTINGS_ROUTE)
+  const data: unknown = await response.json()
+  if (!isOk(data)) throw new Error(errorMessage(data) ?? 'settings request failed')
+  return data.value as SettingsView
+}
+
+async function saveView(revision: number, value: Record<string, unknown>): Promise<SettingsView> {
+  const response = await fetch(SETTINGS_ROUTE, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ expectedRevision: revision, value }),
+  })
+  const data: unknown = await response.json()
+  if (!isOk(data)) throw new Error(errorMessage(data) ?? 'settings save failed')
+  return data.value as SettingsView
+}
+
+function isOk(data: unknown): data is { ok: true; value: SettingsView } {
+  return typeof data === 'object' && data !== null && (data as { ok?: unknown }).ok === true
+}
+
+function errorMessage(data: unknown): string | undefined {
+  if (typeof data !== 'object' || data === null) return undefined
+  const error = (data as { error?: { message?: unknown } }).error
+  return typeof error?.message === 'string' ? error.message : undefined
 }
 
 interface SettingsInjected {
-  scope: SettingsScope<CotSummarizerConfig>
   t: T
 }
 
@@ -99,38 +144,57 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   )
 }
 
-/** The plugin's settings page bound to the `cot-summarizer` namespace. */
-function SettingsSection({ scope, t }: SettingsSectionProps) {
-  if (scope === undefined || t === undefined) return null
-  const snapshot = useSyncExternalStore(
-    (listener) => scope.subscribe(listener),
-    () => scope.getSnapshot(),
-  )
-  const [saved, setSaved] = useState<string>()
-  const [saving, setSaving] = useState<string>()
+/** The plugin's settings page, served by the host route. */
+function SettingsSection({ t }: SettingsSectionProps) {
+  const [view, setView] = useState<SettingsView>()
+  const [error, setError] = useState<string>()
+  const [draft, setDraft] = useState<CotSummarizerConfig>({})
+  const [apiKeyDraft, setApiKeyDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
   const savedTimer = useRef<ReturnType<typeof setTimeout>>()
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchView().then((next) => {
+      if (cancelled) return
+      setView(next)
+      setDraft(next.settings)
+    }).catch((reason: unknown) => {
+      if (cancelled) return
+      setError(reason instanceof Error ? reason.message : String(reason))
+    })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => () => { if (savedTimer.current !== undefined) clearTimeout(savedTimer.current) }, [])
 
-  const save = (field: keyof CotSummarizerConfig & string, value: unknown): void => {
-    setSaving(field)
-    void scope.set(field, value).then(() => {
-      setSaving(undefined)
-      setSaved(field)
-      if (savedTimer.current !== undefined) clearTimeout(savedTimer.current)
-      savedTimer.current = setTimeout(() => { setSaved(undefined) }, 1500)
-    }).catch(() => { setSaving(undefined) })
+  if (view === undefined) {
+    return <p>{error !== undefined ? `${t('unavailable')} ${error}` : t('loading')}</p>
   }
 
-  if (snapshot.status === 'loading') return <p>{t('loading')}</p>
-  if (snapshot.status === 'unavailable') return <p>{t('unavailable')}</p>
+  const set = (field: keyof CotSummarizerConfig, value: unknown): void => {
+    setDraft((previous) => ({ ...previous, [field]: value }))
+    setSaved(false)
+  }
 
-  const value = snapshot.value ?? {}
-
-  const mark = (field: keyof CotSummarizerConfig & string): string | undefined => {
-    if (saving === field) return t('saving')
-    if (saved === field) return t('save')
-    return undefined
+  const save = (): void => {
+    setSaving(true)
+    setError(undefined)
+    const value: Record<string, unknown> = { ...draft }
+    if (apiKeyDraft.trim() !== '') value.apiKey = apiKeyDraft.trim()
+    void saveView(view.revision, value).then((next) => {
+      setView(next)
+      setDraft(next.settings)
+      setApiKeyDraft('')
+      setSaving(false)
+      setSaved(true)
+      if (savedTimer.current !== undefined) clearTimeout(savedTimer.current)
+      savedTimer.current = setTimeout(() => { setSaved(false) }, 2000)
+    }).catch((reason: unknown) => {
+      setSaving(false)
+      setError(reason instanceof Error ? reason.message : String(reason))
+    })
   }
 
   return (
@@ -143,89 +207,88 @@ function SettingsSection({ scope, t }: SettingsSectionProps) {
         <Field label={t('enabled')}>
           <input
             type="checkbox"
-            checked={value.enabled ?? true}
-            onChange={(event) => { save('enabled', event.target.checked) }}
+            checked={draft.enabled ?? true}
+            onChange={(event) => { set('enabled', event.target.checked) }}
           />
-          {mark('enabled') !== undefined && <span className="dshc-saved">{mark('enabled')}</span>}
         </Field>
         <Field label={t('baseUrl')} hint={t('baseUrlHint')}>
           <input
             type="text"
-            defaultValue={value.baseUrl ?? ''}
-            onBlur={(event) => { if (event.target.value.trim() !== '') save('baseUrl', event.target.value.trim()) }}
+            value={draft.baseUrl ?? ''}
+            onChange={(event) => { set('baseUrl', event.target.value) }}
           />
-          {mark('baseUrl') !== undefined && <span className="dshc-saved">{mark('baseUrl')}</span>}
         </Field>
         <Field label={t('apiKey')} hint={t('apiKeyHint')}>
           <input
             type="password"
-            defaultValue={value.apiKey ?? ''}
-            onBlur={(event) => { if (event.target.value !== '') save('apiKey', event.target.value) }}
+            value={apiKeyDraft}
+            placeholder={view.apiKeyConfigured ? t('apiKeyConfiguredPlaceholder') : t('apiKeyPlaceholder')}
+            onChange={(event) => { setApiKeyDraft(event.target.value) }}
           />
-          {mark('apiKey') !== undefined && <span className="dshc-saved">{mark('apiKey')}</span>}
         </Field>
         <Field label={t('model')} hint={t('modelHint')}>
           <input
             type="text"
-            defaultValue={value.model ?? ''}
-            onBlur={(event) => { if (event.target.value.trim() !== '') save('model', event.target.value.trim()) }}
+            value={draft.model ?? ''}
+            onChange={(event) => { set('model', event.target.value) }}
           />
-          {mark('model') !== undefined && <span className="dshc-saved">{mark('model')}</span>}
         </Field>
         <Field label={t('systemPrompt')} hint={t('systemPromptHint')}>
           <textarea
             rows={5}
-            defaultValue={value.systemPrompt ?? ''}
-            onBlur={(event) => { if (event.target.value.trim() !== '') save('systemPrompt', event.target.value) }}
+            value={draft.systemPrompt ?? ''}
+            onChange={(event) => { set('systemPrompt', event.target.value) }}
           />
-          {mark('systemPrompt') !== undefined && <span className="dshc-saved">{mark('systemPrompt')}</span>}
         </Field>
         <Field label={t('minReasoningChars')} hint={t('minReasoningCharsHint')}>
           <input
             type="number"
             min={0}
-            defaultValue={value.minReasoningChars ?? 32}
-            onBlur={(event) => {
+            value={draft.minReasoningChars ?? 32}
+            onChange={(event) => {
               const parsed = Number(event.target.value)
-              if (Number.isFinite(parsed) && parsed >= 0) save('minReasoningChars', parsed)
+              if (Number.isFinite(parsed)) set('minReasoningChars', parsed)
             }}
           />
-          {mark('minReasoningChars') !== undefined && <span className="dshc-saved">{mark('minReasoningChars')}</span>}
         </Field>
         <Field label={t('maxSummaryChars')} hint={t('maxSummaryCharsHint')}>
           <input
             type="number"
             min={1}
-            defaultValue={value.maxSummaryChars ?? 800}
-            onBlur={(event) => {
+            value={draft.maxSummaryChars ?? 800}
+            onChange={(event) => {
               const parsed = Number(event.target.value)
-              if (Number.isFinite(parsed) && parsed >= 1) save('maxSummaryChars', parsed)
+              if (Number.isFinite(parsed)) set('maxSummaryChars', parsed)
             }}
           />
-          {mark('maxSummaryChars') !== undefined && <span className="dshc-saved">{mark('maxSummaryChars')}</span>}
         </Field>
         <Field label={t('timeoutMs')}>
           <input
             type="number"
             min={1}
-            defaultValue={value.timeoutMs ?? 30000}
-            onBlur={(event) => {
+            value={draft.timeoutMs ?? 30000}
+            onChange={(event) => {
               const parsed = Number(event.target.value)
-              if (Number.isFinite(parsed) && parsed >= 1) save('timeoutMs', parsed)
+              if (Number.isFinite(parsed)) set('timeoutMs', parsed)
             }}
           />
-          {mark('timeoutMs') !== undefined && <span className="dshc-saved">{mark('timeoutMs')}</span>}
         </Field>
         <Field label={t('onError')}>
           <select
-            defaultValue={value.onError ?? 'hide'}
-            onChange={(event) => { save('onError', event.target.value) }}
+            value={draft.onError ?? 'hide'}
+            onChange={(event) => { set('onError', event.target.value) }}
           >
             <option value="hide">{t('onErrorHide')}</option>
             <option value="pass-through">{t('onErrorPassThrough')}</option>
           </select>
-          {mark('onError') !== undefined && <span className="dshc-saved">{mark('onError')}</span>}
         </Field>
+      </div>
+      <div className="dshc-actions">
+        <button type="button" className="dshc-save" disabled={saving} onClick={save}>
+          {saving ? t('saving') : t('save')}
+        </button>
+        {saved && <span className="dshc-saved">{t('saved')}</span>}
+        {error !== undefined && <span className="dshc-error">{t('failed')} {error}</span>}
       </div>
     </section>
   )
@@ -244,11 +307,15 @@ const STYLES = `
 }
 .dshc-field input[type="checkbox"] { width: 18px; height: 18px; }
 .dshc-field-hint { color: var(--ds-text-secondary, #667); font-size: 11px; line-height: 1.4; }
-.dshc-saved { color: var(--ds-accent, #4f7cff); font-size: 11px; }
+.dshc-actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+.dshc-save { padding: 6px 16px; border: 0; border-radius: 6px; background: var(--ds-accent, #4f7cff); color: #fff; font: inherit; font-size: 13px; cursor: pointer; }
+.dshc-save:disabled { opacity: 0.6; cursor: default; }
+.dshc-saved { color: var(--ds-accent, #4f7cff); font-size: 12px; }
+.dshc-error { color: #d33; font-size: 12px; }
 `
 
-/** Required services: the slot registry, the locale seat, and the settings transport. */
-export const inject = ['slots', 'locale', 'settingsScope']
+/** Required services: the slot registry and the locale seat. */
+export const inject = ['slots', 'locale']
 
 /** Browser plugin entry: register the settings page for the cot-summarizer namespace. */
 export function apply(ctx: ClientContext): void {
@@ -260,21 +327,11 @@ export function apply(ctx: ClientContext): void {
     return () => { style.remove() }
   }, 'dsh-cot-summerization: styles')
   const t = ctx.locale.bind(NS)
-  const scope = ctx.settingsScope.bind<CotSummarizerConfig>({ namespace: NS })
-  // diagnostics: dump the wire describe result into the document title
-  setTimeout(() => {
-    void ctx.get('connection').api.settings.describe({}).then((response: { result: { ok: boolean; value?: { namespaces?: Array<{ ns: string }>; writable?: boolean } } }) => {
-      const namespaces = response.result.value?.namespaces?.map((n) => n.ns) ?? []
-      document.title = `COT-DIAG: ${JSON.stringify(namespaces)}`
-    }).catch((error: unknown) => {
-      document.title = `COT-DIAG-ERR: ${error instanceof Error ? error.message : String(error)}`
-    })
-  }, 4000)
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'cot-summarizer',
     order: 31,
     label: () => t('nav'),
-    inject: () => ({ scope, t }),
+    inject: () => ({ t }),
   }, SettingsSection))
 }

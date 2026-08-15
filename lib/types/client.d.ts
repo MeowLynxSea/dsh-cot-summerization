@@ -1,9 +1,12 @@
 /**
  * dsh-cot-summerization — browser half. Registers the plugin's settings page
- * into the Web Client's settings shell (`settings.section` slot) and renders
- * the `cot-summarizer` namespace through the standard settings-scope
- * transport: every field write goes through `scope.set`, lands in the Host
- * settings document, and applies live.
+ * into the Web Client's settings shell (`settings.section` slot).
+ *
+ * The Web Client's generic settings transport only serves a fixed namespace
+ * whitelist, so — like the vision toolkit — the page reads and writes its
+ * namespace through a same-origin route (`/_dsh/cot-summarizer/settings`)
+ * mounted by the host half. The API key is never returned by the route;
+ * leaving the field blank keeps the stored key.
  * @module dsh-cot-summerization/client
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
@@ -15,7 +18,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     }
 }
 declare const en: Record<string, string>;
-/** Required services: the slot registry, the locale seat, and the settings transport. */
+/** Required services: the slot registry and the locale seat. */
 export declare const inject: string[];
 /** Browser plugin entry: register the settings page for the cot-summarizer namespace. */
 export declare function apply(ctx: ClientContext): void;

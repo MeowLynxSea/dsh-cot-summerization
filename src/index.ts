@@ -12,7 +12,6 @@
  * @module dsh-cot-summerization
  */
 
-import { writeFileSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-settings'
@@ -25,6 +24,7 @@ import {
   type ResolvedCotSummarizerConfig,
 } from './config.ts'
 import { SummarizeError, summarizeCoT } from './summarize.ts'
+import { installCotSummarizerWeb } from './web.ts'
 
 export const name = 'dsh-cot-summerization'
 
@@ -148,12 +148,6 @@ export async function* transformCoTStream(
 
 /** Plugin entry: register settings, then wrap every streaming model call. */
 export function apply(ctx: Context, config: CotSummarizerConfig = {}): () => void {
-  try {
-    writeFileSync('/tmp/cot-host-applied.txt', new Date().toISOString(), 'utf8')
-  } catch {
-    // diagnostics only
-  }
-  ctx.logger.warn('cot-summarizer: host plugin apply (config %o)', config)
   const scope = ctx.settings.register(COT_SUMMARIZER_SETTINGS_NAMESPACE, Config, {
     base: config,
     applies: 'live',
@@ -161,14 +155,7 @@ export function apply(ctx: Context, config: CotSummarizerConfig = {}): () => voi
       resolveConfig(value)
     },
   })
-  setTimeout(() => {
-    try {
-      const namespaces = ctx.settings.describe().map((entry) => String(entry.ns))
-      writeFileSync('/tmp/cot-describe.txt', JSON.stringify(namespaces, null, 1), 'utf8')
-    } catch (error) {
-      writeFileSync('/tmp/cot-describe.txt', `ERROR: ${error instanceof Error ? error.message : String(error)}`, 'utf8')
-    }
-  }, 2000)
+  installCotSummarizerWeb(ctx, scope)
   let cfg: ResolvedCotSummarizerConfig = resolveConfig(scope.get())
   const watch = scope.watch((next) => {
     try {
