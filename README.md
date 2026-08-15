@@ -44,7 +44,7 @@
 
 | 宣传名 | 现实 |
 | :--- | :--- |
-| **Information Never Existed™** | 原始 reasoning 增量在 `llm/stream` 拦截层被直接吞掉——会话日志、模型历史、UI 三处均无落地记录。 |
+| **Information Never Existed™** | 原始 reasoning 增量在 `llm/stream` 拦截层被直接吞掉——UI、流式 chunk、落地 transcript 三处均无原文。模型可见历史除外:那里有一份 model-only 的 surface 替换事件,悄悄把原文还给了模型(推理性能要紧)。 |
 | **夏日渐进蒸馏** | 流式分段摘要:每凑满 `chunkChars`(300 字)或 `chunkIntervalMs`(4 秒)触发一次,切分点优先落在句边界。 |
 | **BioGram™ 重叠度量** | bigram Dice 系数,阈值 0.65。该阈值经历了 0.8 → 0.7 → 0.65 的科学调参过程。 |
 | **连续核心追踪引擎** | 最长公共子串,滚动数组实现,O(n·m),零依赖。用来逮住换了前缀、核心没变的复述。 |
@@ -61,9 +61,9 @@
 <img src="assets/architecture.svg" width="880" alt="系统架构图:大模型的原始思维链在 llm/stream 拦截层被吞掉,由小模型改写为摘要后送入 UI;会话日志、模型历史与你的视网膜收到的是红色虚线">
 </div>
 
-一条数据的完整旅程:大模型慷慨地吐出全裸思维链 → 隐身引擎在瀑布层将其没收 → 小模型改写员通读全文并写一份体面摘要 → 摘要以正常的 reasoning block 增量流入 UI 的「Think」折叠行。
+一条数据的完整旅程:大模型慷慨地吐出全裸思维链 → 隐身引擎在瀑布层将其没收 → 小模型改写员通读全文并写一份体面摘要 → 摘要以正常的 reasoning block 增量流入 UI 的「Think」折叠行。落地的 `assistant/message` 之后,插件再追加一条 model-only 的 surface 替换事件,把原始思维链还给模型历史——Agent Loop 的多轮推理因此不受摘要影响,而 transcript 与你的视网膜收到的依然是那条红色虚线。
 
-注意红色虚线:原始 CoT 对日志、历史和你的视网膜返回的都是「永不落地」。这不是缓存策略,这是哲学立场。
+注意红色虚线:原始 CoT 对日志里的人类 transcript 与你的视网膜返回的是「永不落地」;对模型可见 surface 返回的是「原样奉还」。这不是缓存策略,这是给推理性能的体面。
 
 ## 📊 业界定位
 
@@ -111,6 +111,7 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 | 字段 | 默认值 | 说明 |
 | :--- | :--- | :--- |
 | `enabled` | `true` | 总开关,一键回到坦诚世界 |
+| `preserveRawForModel` | `true` | 在模型可见历史中恢复原始思维链(model-only surface 替换事件),Agent Loop 多轮推理不受摘要影响;仅 UI 显示摘要 |
 | `baseUrl` | `https://api.deepseek.com/v1` | 任意 Chat Completions 兼容端点(本地小模型亦可,改写员不必出网) |
 | `apiKey` | `""` | 摘要端点的 API key |
 | `model` | `deepseek-chat` | 改写员型号 |
@@ -156,7 +157,7 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 <details>
 <summary><b>我能看到原始思维链吗?</b></summary>
 
-这正是本插件要解决的问题。技术上 `onError: pass-through` 可以让你在摘要失败时看到原文,但我们建议你挺住。
+这正是本插件要解决的问题。技术上 `onError: pass-through` 可以让你在摘要失败时看到原文,会话日志的 model-only 替换事件里也躺着一份完整原文(关掉 `preserveRawForModel` 连它一起消失),但我们建议你挺住。
 
 </details>
 
@@ -170,7 +171,7 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 <details>
 <summary><b>为什么不直接做个折叠?</b></summary>
 
-折叠只是视觉上的羞怯,点开还在。我们提供的是**结构性的得体**:原文从未落地,日志里都没有,点开也没有。
+折叠只是视觉上的羞怯,点开还在。我们提供的是**结构性的得体**:原文从未落地到 transcript 与 UI,点开也没有。(模型可见历史里倒是有一份——但那是给推理性能的,不是给你的。)
 
 </details>
 

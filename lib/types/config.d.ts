@@ -33,6 +33,12 @@ export declare const DEFAULT_SYSTEM_PROMPT = "You summarize the hidden chain of 
 export interface CotSummarizerConfig {
     /** Master switch; when off, streams pass through untouched. */
     enabled?: boolean;
+    /**
+     * Restore the raw chain of thought on the model-visible session surface
+     * (a model-only replacement event), so the Agent Loop reasons over the
+     * original chain of thought while the Web UI keeps showing the summary.
+     */
+    preserveRawForModel?: boolean;
     /** Chat Completions base URL, e.g. `https://api.deepseek.com/v1`. */
     baseUrl?: string;
     /** API key for the summarizer endpoint. */
@@ -76,6 +82,7 @@ export declare const Config: Schema<CotSummarizerConfig>;
 /** Configuration after static validation, with every default materialized. */
 export interface ResolvedCotSummarizerConfig {
     enabled: boolean;
+    preserveRawForModel: boolean;
     baseUrl: string;
     apiKey: string;
     model: string;

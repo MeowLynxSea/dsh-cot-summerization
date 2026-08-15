@@ -13,7 +13,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { FileSettingsProvider } from '@deepseek-ai/dsh-settings-file'
-import LlmRuntime, { BlockAssembler, LlmAdapter } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { BlockAssembler, LlmAdapter, createAssistantMessage } from '@deepseek-ai/dsh-llm'
+import { SessionStore } from '@deepseek-ai/dsh-session'
 import * as plugin from '../lib/index.js'
 
 // --- fake Chat Completions summarizer endpoint ---
@@ -82,3 +83,55 @@ assert.ok(summaryCalls[0].body.messages[0].content.includes('Write the summary i
 assert.ok(summaryCalls[0].body.messages[0].content.includes('标题：说明'), 'style preset composes into the system prompt')
 
 console.log('integration test passed: raw CoT replaced by summary through the real llm/stream waterfall')
+
+// --- end-to-end: the model-visible surface keeps the raw chain of thought ---
+// A loop-shaped call carries a sessionId, so the plugin tracks the stream.
+// Replaying what dsh-agent-loop does with the stream (append each chunk, then
+// the assembled assistant/message) must land one model-only replacement: the
+// UI transcript keeps the summary event, deriveMessages() returns the raw.
+new SessionStore(ctx) // Service constructor registers `ctx.sessions`
+const session = ctx.sessions.create('it-session')
+const loopStream = ctx.llm.stream({
+  provider: 'fake',
+  model: 'anything',
+  messages: [],
+  sessionId: 'it-session',
+})
+const loopAssembler = new BlockAssembler()
+const chunkSeqs = []
+for await (const chunk of loopStream) {
+  chunkSeqs.push(session.append('assistant/chunk', { turn: 1, step: 0, chunk }).seq)
+  loopAssembler.push(chunk)
+}
+// The real loop assembles the assistant message with a model provenance
+// (BlockAssembler.message() would stamp a plugin source, which the restore
+// correctly refuses to touch).
+const loopMessage = createAssistantMessage({
+  content: loopAssembler.blocks(),
+  source: { provider: 'fake', model: 'anything' },
+})
+const landed = session.append('assistant/message', {
+  turn: 1,
+  step: 0,
+  message: loopMessage,
+}, { surfaceOp: 'append', sourceEventSeqs: chunkSeqs })
+assert.equal(landed.data.message.content.at(-1).text, 'CLEAN SUMMARY',
+  'the append-origin event (the UI transcript) keeps the summary')
+
+// The restorer appends in a microtask once the message event dispatch returns.
+await new Promise((resolve) => setTimeout(resolve, 0))
+
+const events = session.events
+const replacement = events.at(-1)
+assert.equal(replacement.type, 'assistant/message')
+assert.deepEqual(replacement.surfaceOp, { op: 'replace', start: landed.seq, end: landed.seq },
+  'one model-only replacement event shadows the summary message node')
+
+const derived = session.deriveMessages()
+const derivedAssistant = derived.find((m) => m.role === 'assistant')
+assert.ok(derivedAssistant, 'the assistant message still derives for the next model request')
+const derivedReasoning = derivedAssistant.content.find((b) => b.type === 'reasoning')
+assert.equal(derivedReasoning.text, 'RAW SECRET PLAN for the user with more secret details',
+  'the model-visible history replays the RAW chain of thought, not the summary')
+
+console.log('integration test passed: model history keeps the raw CoT while the transcript keeps the summary')

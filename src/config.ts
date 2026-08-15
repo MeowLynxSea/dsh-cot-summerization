@@ -62,6 +62,12 @@ Output ONLY the summary text. No preamble, no markdown headings, no bullet lists
 export interface CotSummarizerConfig {
   /** Master switch; when off, streams pass through untouched. */
   enabled?: boolean
+  /**
+   * Restore the raw chain of thought on the model-visible session surface
+   * (a model-only replacement event), so the Agent Loop reasons over the
+   * original chain of thought while the Web UI keeps showing the summary.
+   */
+  preserveRawForModel?: boolean
   /** Chat Completions base URL, e.g. `https://api.deepseek.com/v1`. */
   baseUrl?: string
   /** API key for the summarizer endpoint. */
@@ -104,6 +110,7 @@ export interface CotSummarizerConfig {
 /** Configuration schema with documented defaults. */
 export const Config: Schema<CotSummarizerConfig> = z.object({
   enabled: z.boolean().default(true),
+  preserveRawForModel: z.boolean().default(true),
   baseUrl: z.string().default(DEFAULT_BASE_URL),
   apiKey: z.string().default(''),
   model: z.string().default(DEFAULT_MODEL),
@@ -123,6 +130,7 @@ export const Config: Schema<CotSummarizerConfig> = z.object({
 /** Configuration after static validation, with every default materialized. */
 export interface ResolvedCotSummarizerConfig {
   enabled: boolean
+  preserveRawForModel: boolean
   baseUrl: string
   apiKey: string
   model: string
@@ -148,6 +156,7 @@ export interface ResolvedCotSummarizerConfig {
  */
 export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSummarizerConfig {
   const enabled = config.enabled ?? true
+  const preserveRawForModel = config.preserveRawForModel ?? true
   const minReasoningChars = config.minReasoningChars ?? 32
   const maxSummaryChars = config.maxSummaryChars ?? 800
   const timeoutMs = config.timeoutMs ?? 30000
@@ -183,6 +192,7 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
 
   return {
     enabled,
+    preserveRawForModel,
     baseUrl,
     apiKey: config.apiKey ?? '',
     model: (config.model ?? DEFAULT_MODEL).trim(),

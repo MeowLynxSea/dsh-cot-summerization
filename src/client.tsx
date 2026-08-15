@@ -32,8 +32,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const en: Record<string, string> = {
   nav: 'CoT Summary',
   settingsTitle: 'Chain-of-Thought Summarization',
-  settingsIntro: 'Hide the model\'s raw chain of thought and stream a small-model summary in its place. The raw reasoning never reaches the session log or the UI.',
+  settingsIntro: 'Hide the model\'s raw chain of thought in the UI and stream a small-model summary in its place. With "Keep raw reasoning for the model" on, the Agent Loop still reasons over the original chain of thought.',
   enabled: 'Enabled',
+  preserveRawForModel: 'Keep raw reasoning for the model',
+  preserveRawForModelHint: 'Restore the original chain of thought in the model-visible history (Agent Loop performance is unaffected); only the Web UI shows the summary.',
   baseUrl: 'Base URL',
   baseUrlHint: 'Any Chat Completions-compatible endpoint.',
   apiKey: 'API key',
@@ -80,8 +82,10 @@ const en: Record<string, string> = {
 const zh: Record<string, string> = {
   nav: '思维链总结',
   settingsTitle: '思维链总结（CoT Summarization）',
-  settingsIntro: '隐藏模型的原始思维链，改为流式展示小模型生成的摘要。原始推理不会进入会话日志或界面。',
+  settingsIntro: '在界面中隐藏模型的原始思维链，改为流式展示小模型生成的摘要。开启"模型历史保留原文"时，Agent Loop 仍基于原始思维链推理。',
   enabled: '启用',
+  preserveRawForModel: '模型历史保留原文',
+  preserveRawForModelHint: '在模型可见历史中恢复原始思维链（Agent Loop 推理不受影响），仅 Web 界面显示摘要。',
   baseUrl: '接口地址',
   baseUrlHint: '任意兼容 Chat Completions 的接口地址。',
   apiKey: 'API 密钥',
@@ -243,6 +247,13 @@ function SettingsSection({ t }: SettingsSectionProps) {
             type="checkbox"
             checked={draft.enabled ?? true}
             onChange={(event) => { set('enabled', event.target.checked) }}
+          />
+        </Field>
+        <Field label={t('preserveRawForModel')} hint={t('preserveRawForModelHint')}>
+          <input
+            type="checkbox"
+            checked={draft.preserveRawForModel ?? true}
+            onChange={(event) => { set('preserveRawForModel', event.target.checked) }}
           />
         </Field>
         <Field label={t('incremental')} hint={t('incrementalHint')}>

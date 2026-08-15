@@ -3,22 +3,32 @@
  * chain of thought and display a summary produced by a small model.
  *
  * The plugin wraps the `llm/stream` waterfall. Raw reasoning deltas are
- * swallowed (they never reach the session log, the model history, or the
- * UI). While the raw chain of thought streams, the collected reasoning is
- * summarized segment by segment — trigger points prefer sentence boundaries
- * and are throttled by character volume and elapsed time. Each partial call
- * summarizes ONLY the newly arrived reasoning segment (the previous summary
+ * swallowed (they never reach the session log chunks, the landed transcript
+ * message, or the UI). While the raw chain of thought streams, the collected
+ * reasoning is summarized segment by segment — trigger points prefer sentence
+ * boundaries and are throttled by character volume and elapsed time. Each partial
+ * call summarizes ONLY the newly arrived reasoning segment (the previous summary
  * is passed as continuity context but never needs to be reproduced), so the
  * replacement reasoning block grows reliably as segments land; a final call
  * covers whatever tail remains when the reasoning completes. The Web Client
  * renders the result as the usual "Think" disclosure row. Settings surface
  * in the Web Client settings page under the `cot-summarizer` namespace.
+ *
+ * Reasoning models replay their prior reasoning on tool-call turns, so a
+ * summarized history would degrade multi-step reasoning. When
+ * `preserveRawForModel` is on (default), the raw chain of thought is restored
+ * on the MODEL-VISIBLE session surface after the loop's summary message
+ * lands — a replacement `assistant/message` event that shadows the summary
+ * node for the model while the append-origin transcript (and the UI) keeps
+ * showing the summary. See `./history.ts`.
  * @module dsh-cot-summerization
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-settings'
+// Type-only import activates the session Events declaration (`session/event`).
+import type {} from '@deepseek-ai/dsh-session'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import {
   Config,
@@ -29,6 +39,22 @@ import {
 } from './config.ts'
 import { summarizeCoT, type SummarizeOptions } from './summarize.ts'
 import { installCotSummarizerWeb } from './web.ts'
+import {
+  captureReasoningDelta,
+  captureReasoningStart,
+  createRawCapture,
+  createRawHistoryRestorer,
+  type RawCoTCapture,
+} from './history.ts'
+
+export {
+  createRawCapture,
+  createRawHistoryRestorer,
+  restoreRawAssistantMessage,
+  type RawCoTCapture,
+  type RawHistoryRestorer,
+  type SessionLike,
+} from './history.ts'
 
 export const name = 'dsh-cot-summerization'
 
@@ -150,10 +176,17 @@ function dedupeSentences(result: string, emitted: string): string {
  * transform is index-safe for the session log's `BlockAssembler`: forwarded
  * blocks keep their indices verbatim, and the summary block never collides
  * with them because the raw reasoning index is freed by swallowing.
+ *
+ * When `capture` is supplied, the raw reasoning (per upstream block) and the
+ * finish chunk's replay state are recorded into it, so the raw chain of
+ * thought can later be restored on the model-visible session surface while
+ * the UI keeps the summary — see `./history.ts`.
  * @param upstream - the inner stream from `next()`.
  * @param cfg - resolved configuration captured at listener invocation.
  * @param summarize - summarizer call, injectable for tests.
  * @param callerSignal - the model call's abort signal, when present.
+ * @param log - warning sink for transform-level failures.
+ * @param capture - raw-reasoning recorder for surface restoration, when tracked.
  */
 export async function* transformCoTStream(
   upstream: AsyncIterable<StreamChunk>,
@@ -161,6 +194,7 @@ export async function* transformCoTStream(
   summarize: SummarizeFn,
   callerSignal: AbortSignal | undefined,
   log: (message: string, ...args: unknown[]) => void = () => {},
+  capture: RawCoTCapture | undefined = undefined,
 ): AsyncGenerator<StreamChunk> {
   let rawCoT = ''
   let sawReasoning = false
@@ -221,6 +255,7 @@ export async function* transformCoTStream(
     if (summaryStarted) return
     const index = blockIndex()
     rawShown = true
+    if (capture !== undefined) capture.rawShown = true
     yield { type: 'block-start', index, blockType: 'reasoning' }
     yield { type: 'reasoning-delta', index, text }
     yield { type: 'block-end', index, block: { type: 'reasoning', text } }
@@ -291,6 +326,10 @@ export async function* transformCoTStream(
       case 'block-start': {
         if (chunk.blockType === 'reasoning') {
           sawReasoning = true
+          if (capture !== undefined) {
+            capture.sawReasoning = true
+            captureReasoningStart(capture)
+          }
           if (summaryIndex === -1) summaryIndex = chunk.index
           continue
         }
@@ -299,6 +338,10 @@ export async function* transformCoTStream(
       }
       case 'reasoning-delta': {
         sawReasoning = true
+        if (capture !== undefined) {
+          capture.sawReasoning = true
+          captureReasoningDelta(capture, chunk.text)
+        }
         rawCoT += chunk.text
         maybeFirePartial()
         continue
@@ -306,6 +349,7 @@ export async function* transformCoTStream(
       case 'block-end': {
         if (chunk.block.type === 'reasoning') {
           sawReasoning = true
+          if (capture !== undefined) capture.sawReasoning = true
           if (!reasoningDone) {
             reasoningDone = true
             const trimmed = rawCoT.trim()
@@ -332,6 +376,7 @@ export async function* transformCoTStream(
         continue
       }
       case 'finish': {
+        if (capture !== undefined) capture.replayState = chunk.replayState
         if (!sawReasoning) {
           yield chunk
           return
@@ -360,10 +405,18 @@ export async function* transformCoTStream(
           summaryClosed = true
           yield { type: 'block-end', index: blockIndex(), block: { type: 'reasoning', text: emitted } }
         }
+        if (rawShown) {
+          // The stream carried the reasoning verbatim, so the assembled
+          // message matches the adapter's replay state — forward the finish
+          // untouched (no surface restoration is needed either).
+          yield chunk
+          return
+        }
         // The stream was rewritten (raw reasoning swallowed), so the
         // adapter's lossless replay state no longer matches the assembled
         // assistant content — dropping it keeps later requests from
         // rejecting the historical message ("replay state does not match").
+        // The captured state is reattached to the surface-restored message.
         const { replayState: _replayState, ...finishWithoutReplay } = chunk
         yield finishWithoutReplay
         return
@@ -391,6 +444,18 @@ export function apply(ctx: Context, config: CotSummarizerConfig = {}): () => voi
       ctx.logger.warn('cot-summarizer: keeping the previous generation after a refused Settings change. %s', message)
     }
   })
+  // Raw-history restoration: loop-built requests carry a sessionId, and their
+  // landed summary messages get a model-only surface replacement carrying the
+  // raw chain of thought (the UI transcript is unaffected).
+  const restorer = createRawHistoryRestorer((message, ...args) => {
+    ctx.logger.warn(message, ...args)
+  })
+  const sessionListener = ctx.on('session/event', (session, event) => {
+    restorer.handleSessionEvent(session, event)
+  })
+  const disposeListener = ctx.on('session/disposed', (session) => {
+    restorer.forget(String(session.id))
+  })
   const listener = ctx.on('llm/stream', async function* (
     options: GenerateOptions,
     next: () => AsyncIterable<StreamChunk>,
@@ -399,12 +464,19 @@ export function apply(ctx: Context, config: CotSummarizerConfig = {}): () => voi
       yield* next()
       return
     }
+    let capture: RawCoTCapture | undefined
+    if (cfg.preserveRawForModel && options.sessionId !== undefined) {
+      capture = createRawCapture()
+      restorer.track(String(options.sessionId), capture)
+    }
     yield* transformCoTStream(next(), cfg, summarizeCoT, options.signal, (message, ...args) => {
       ctx.logger.warn(message, ...args)
-    })
+    }, capture)
   })
   return () => {
     watch()
     listener()
+    sessionListener()
+    disposeListener()
   }
 }
