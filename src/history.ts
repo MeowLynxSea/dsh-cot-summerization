@@ -29,34 +29,30 @@ export interface RawCoTCapture {
   sawReasoning: boolean
   /** Whether the raw reasoning was forwarded verbatim (nothing to restore). */
   rawShown: boolean
-  /** Raw reasoning text per upstream reasoning block, in stream order. */
-  rawReasoning: string[]
+  /**
+   * The assistant content assembled over the UNTOUCHED upstream stream — the
+   * exact blocks the adapter produced, in wire order (a reasoning-first
+   * stream stays reasoning-first). Set at the finish chunk; the replacement
+   * message is rebuilt from these blocks, because the emitted stream reorders
+   * them (the summary block opens late, so the loop's first-seen block order
+   * differs from the wire) and adapters validate replay state against the
+   * wire order ("block N does not match assistant content").
+   */
+  rawBlocks: ContentBlock[] | undefined
   /** Adapter replay state from the terminal finish chunk, when present. */
   replayState: unknown
 }
 
 /** A fresh capture for one model call. */
 export function createRawCapture(): RawCoTCapture {
-  return { sawReasoning: false, rawShown: false, rawReasoning: [], replayState: undefined }
-}
-
-/** Record the start of one upstream reasoning block. */
-export function captureReasoningStart(capture: RawCoTCapture): void {
-  capture.rawReasoning.push('')
-}
-
-/** Append one raw reasoning delta to the current upstream reasoning block. */
-export function captureReasoningDelta(capture: RawCoTCapture, text: string): void {
-  if (capture.rawReasoning.length === 0) capture.rawReasoning.push('')
-  const last = capture.rawReasoning.length - 1
-  capture.rawReasoning[last] = (capture.rawReasoning[last] ?? '') + text
+  return { sawReasoning: false, rawShown: false, rawBlocks: undefined, replayState: undefined }
 }
 
 /**
  * Build the replacement assistant message for the model-visible surface: the
- * landed message with its reasoning blocks restored to the raw chain of
- * thought, and the adapter replay state reattached (the streamed rewrite had
- * to drop it because the assembled content no longer matched it).
+ * wire-exact upstream content (raw reasoning restored) with the adapter
+ * replay state reattached (the streamed rewrite had to drop it because the
+ * assembled content no longer matched it).
  *
  * @param message - the landed (summary) assistant message from the loop.
  * @param capture - raw facts recorded during the same model stream.
@@ -68,30 +64,21 @@ export function restoreRawAssistantMessage(
   capture: RawCoTCapture,
 ): AssistantMessage | undefined {
   if (!capture.sawReasoning || capture.rawShown) return undefined
-  const raws = capture.rawReasoning.filter((text) => text !== '')
-  if (raws.length === 0) return undefined
+  const rawBlocks = capture.rawBlocks
+  if (rawBlocks === undefined) return undefined
+  const rawReasoning = rawBlocks
+    .filter((block) => block.type === 'reasoning')
+    .map((block) => block.text)
+    .join('')
+  if (rawReasoning === '') return undefined
   if (message.source.kind !== 'model') return undefined
-  const emittedReasoning = message.content
+  const landedReasoning = message.content
     .filter((block): block is Extract<ContentBlock, { type: 'reasoning' }> => block.type === 'reasoning')
     .map((block) => block.text)
     .join('')
-  if (emittedReasoning === raws.join('')) return undefined
-  let cursor = 0
-  // The streamed rewrite collapses every raw block into one summary block,
-  // so the last reasoning block IN THE LANDED MESSAGE absorbs any remaining
-  // raw text (concatenation matches how adapters replay reasoning_content).
-  let lastReasoningIndex = -1
-  for (let index = 0; index < message.content.length; index++) {
-    if (message.content[index]?.type === 'reasoning') lastReasoningIndex = index
-  }
-  const content: ContentBlock[] = message.content.map((block, index) => {
-    if (block.type !== 'reasoning') return block
-    const text = index < lastReasoningIndex ? (raws[cursor++] ?? '') : raws.slice(cursor).join('')
-    return { type: 'reasoning' as const, text }
-  })
-  if (content.every((block, index) => block === message.content[index])) return undefined
+  if (landedReasoning === rawReasoning) return undefined
   return createAssistantMessage({
-    content,
+    content: rawBlocks,
     source: {
       provider: message.source.provider,
       model: message.source.model,

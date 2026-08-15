@@ -42,11 +42,33 @@ function summarizingUpstream() {
     { type: 'block-start', index: 0, blockType: 'reasoning' },
     { type: 'reasoning-delta', index: 0, text: RAW_A },
     { type: 'reasoning-delta', index: 0, text: RAW_B },
-    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'raw' } },
+    // Real adapters carry the complete accumulated text in block-end.
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: RAW_A + RAW_B } },
     { type: 'block-start', index: 1, blockType: 'text' },
     { type: 'text-delta', index: 1, text: 'Answer.' },
     { type: 'block-end', index: 1, block: { type: 'text', text: 'Answer.' } },
     { type: 'finish', reason: { kind: 'stop' }, replayState: { blocks: ['reasoning', 'text'] } },
+  ]
+}
+
+/**
+ * The regression shape from the field: a pi-ai-style tool-call turn where the
+ * reasoning streams FIRST on the wire, so the emitted stream opens the tool
+ * call before the late-opening summary block and the loop's landed message
+ * orders the blocks [tool-call, reasoning]. The adapter's replay state
+ * describes the WIRE order [reasoning, tool-call]; the restored message must
+ * match the wire, not the landed order.
+ */
+function toolCallUpstream() {
+  return [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    { type: 'reasoning-delta', index: 0, text: RAW_A },
+    { type: 'reasoning-delta', index: 0, text: RAW_B },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: RAW_A + RAW_B } },
+    { type: 'block-start', index: 1, blockType: 'tool-call' },
+    { type: 'tool-call-delta', index: 1, id: 'call-1', name: 'bash', argumentsDelta: '{"command":"ls"}' },
+    { type: 'block-end', index: 1, block: { type: 'tool-call', id: 'call-1', name: 'bash', arguments: '{"command":"ls"}' } },
+    { type: 'finish', reason: { kind: 'tool-calls' }, replayState: { kind: 'pi-ai', blocks: [{ type: 'reasoning' }, { type: 'tool-call' }] } },
   ]
 }
 
@@ -95,38 +117,49 @@ async function testCaptureRecordsRaw() {
 
   assert.equal(capture.sawReasoning, true)
   assert.equal(capture.rawShown, false)
-  assert.equal(capture.rawReasoning.length, 1, 'one raw block recorded')
-  assert.equal(capture.rawReasoning[0], RAW_A + RAW_B, 'the raw text is captured verbatim')
+  assert.deepEqual(capture.rawBlocks.map((b) => b.type), ['reasoning', 'text'], 'the wire blocks are assembled over the upstream stream')
+  assert.equal(capture.rawBlocks[0].text, RAW_A + RAW_B, 'the raw reasoning is captured verbatim')
+  assert.equal(capture.rawBlocks[1].text, 'Answer.')
   assert.deepEqual(capture.replayState, { blocks: ['reasoning', 'text'] }, 'the finish replay state is captured')
   assert.ok(!('replayState' in out.at(-1)), 'the emitted finish still drops the replay state')
   const json = JSON.stringify(out)
   assert.ok(!json.includes('SECRET'), 'the raw chain of thought never leaks into the stream')
-  console.log('ok - the transform captures the raw reasoning and replay state for restoration')
+  console.log('ok - the transform captures the wire-exact blocks and replay state for restoration')
 }
 
-async function testCaptureMultiBlock() {
+async function testRestoreKeepsWireOrder() {
+  // The exact field failure: the landed message orders the blocks
+  // [tool-call, reasoning] (the summary block opens after the tool call —
+  // in the field the summarizer round trip outlasts the tool-call chunks),
+  // but the replay state describes [reasoning, tool-call]. The restored
+  // message must carry the WIRE order or the adapter rejects the next
+  // request ("block 0 does not match assistant content", INVALID_REPLAY_STATE).
   const capture = createRawCapture()
-  const upstream = [
-    { type: 'block-start', index: 0, blockType: 'reasoning' },
-    { type: 'reasoning-delta', index: 0, text: RAW_A },
-    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'raw1' } },
-    { type: 'block-start', index: 1, blockType: 'text' },
-    { type: 'text-delta', index: 1, text: 'Hi' },
-    { type: 'block-end', index: 1, block: { type: 'text', text: 'Hi' } },
-    { type: 'block-start', index: 2, blockType: 'reasoning' },
-    { type: 'reasoning-delta', index: 2, text: RAW_B },
-    { type: 'block-end', index: 2, block: { type: 'reasoning', text: 'raw2' } },
-    { type: 'finish', reason: { kind: 'stop' } },
-  ]
-  await collect(transformCoTStream(upstream, cfg({ minReasoningChars: 10 }), async () => 's.', undefined, () => {}, capture))
-  assert.deepEqual(capture.rawReasoning, [RAW_A, RAW_B], 'each upstream reasoning block is captured separately')
-  console.log('ok - multi-reasoning-block streams capture one raw text per block')
+  const deferredSummary = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    return 'I will run a command.'
+  }
+  const out = await collect(transformCoTStream(toolCallUpstream(), cfg({ minReasoningChars: 10 }),
+    deferredSummary, undefined, () => {}, capture))
+  const { blocks } = assemble(out)
+  assert.deepEqual(blocks.map((b) => b.type), ['tool-call', 'reasoning'], 'the emitted stream lands the tool call first')
+  const landed = assembledMessage(blocks)
+
+  const restored = restoreRawAssistantMessage(landed, capture)
+  assert.notEqual(restored, undefined)
+  assert.deepEqual(restored.content.map((b) => b.type), ['reasoning', 'tool-call'],
+    'the restored message keeps the adapter wire order')
+  assert.equal(restored.content[0].text, RAW_A + RAW_B)
+  assert.equal(restored.content[1].name, 'bash')
+  assert.deepEqual(restored.source.replayState, { kind: 'pi-ai', blocks: [{ type: 'reasoning' }, { type: 'tool-call' }] },
+    'the replay state rides the wire-exact content')
+  console.log('ok - the restore rebuilds the wire order a replay state validates against')
 }
 
 async function testRestoreMessage() {
   const capture = createRawCapture()
   capture.sawReasoning = true
-  capture.rawReasoning = [RAW_A + RAW_B]
+  capture.rawBlocks = [{ type: 'reasoning', text: RAW_A + RAW_B }, { type: 'text', text: 'Answer.' }]
   capture.replayState = { blocks: ['reasoning', 'text'] }
   const landed = assembledMessage(
     [{ type: 'reasoning', text: 'summarized.' }, { type: 'text', text: 'Answer.' }],
@@ -142,22 +175,16 @@ async function testRestoreMessage() {
   assert.equal(restored.source.provider, 'deepseek')
   assert.notEqual(restored.id, landed.id, 'the replacement message gets a fresh identity')
 
-  // Multi-block raws concatenate into the single emitted summary block.
-  const multi = createRawCapture()
-  multi.sawReasoning = true
-  multi.rawReasoning = [RAW_A, RAW_B]
-  const restoredMulti = restoreRawAssistantMessage(landed, multi)
-  assert.equal(restoredMulti.content[0].text, RAW_A + RAW_B)
-
   // Nothing to restore in the pass-through / empty / identical cases.
-  const rawShown = { ...capture, rawShown: true }
+  const rawShown = { ...createRawCapture(), sawReasoning: true, rawShown: true, rawBlocks: capture.rawBlocks }
   assert.equal(restoreRawAssistantMessage(landed, rawShown), undefined, 'verbatim streams need no restoration')
   const empty = createRawCapture()
   empty.sawReasoning = true
-  assert.equal(restoreRawAssistantMessage(landed, empty), undefined, 'no raw text means no restoration')
+  empty.rawBlocks = [{ type: 'text', text: 'Answer.' }]
+  assert.equal(restoreRawAssistantMessage(landed, empty), undefined, 'no raw reasoning means no restoration')
   const identical = createRawCapture()
   identical.sawReasoning = true
-  identical.rawReasoning = ['summarized.']
+  identical.rawBlocks = [{ type: 'reasoning', text: 'summarized.' }]
   assert.equal(restoreRawAssistantMessage(landed, identical), undefined, 'matching text means no surface churn')
   console.log('ok - the restore rebuilds the message with raw reasoning and the replay state')
 }
@@ -202,7 +229,7 @@ async function testRestorerLandsReplacement() {
 async function testRestorerGuards() {
   const capture = createRawCapture()
   capture.sawReasoning = true
-  capture.rawReasoning = [RAW_A]
+  capture.rawBlocks = [{ type: 'reasoning', text: RAW_A }]
   const landed = assembledMessage([{ type: 'reasoning', text: 's.' }])
 
   // Replacement-shaped events must never trigger another restore.
@@ -221,7 +248,10 @@ async function testRestorerGuards() {
 
   // A turn/step mismatch (a different stream's message) does not restore.
   const mismatched = fakeSession('mm')
-  restorer.track('mm', { ...createRawCapture(), sawReasoning: true, rawReasoning: [RAW_A] })
+  const mmCapture = createRawCapture()
+  mmCapture.sawReasoning = true
+  mmCapture.rawBlocks = [{ type: 'reasoning', text: RAW_A }]
+  restorer.track('mm', mmCapture)
   restorer.handleSessionEvent(mismatched, chunkEvent(1, 0))
   restorer.handleSessionEvent(mismatched, messageEvent(landed, 5, 2, 0))
   await drainMicrotasks()
@@ -236,7 +266,10 @@ async function testRestorerGuards() {
 
   // turn/end drops an abandoned tracker (aborted stream, no message landed).
   const abandoned = fakeSession('ab')
-  restorer.track('ab', { ...createRawCapture(), sawReasoning: true, rawReasoning: [RAW_A] })
+  const abCapture = createRawCapture()
+  abCapture.sawReasoning = true
+  abCapture.rawBlocks = [{ type: 'reasoning', text: RAW_A }]
+  restorer.track('ab', abCapture)
   restorer.handleSessionEvent(abandoned, chunkEvent(1, 0))
   restorer.handleSessionEvent(abandoned, { type: 'turn/end', seq: 8, time: 1, data: { turn: 1, reason: { kind: 'aborted' } } })
   restorer.handleSessionEvent(abandoned, messageEvent(landed, 9, 1, 0))
@@ -247,7 +280,10 @@ async function testRestorerGuards() {
   const refusing = fakeSession('rf', true)
   const logs = []
   const refusingRestorer = createRawHistoryRestorer((message, ...args) => { logs.push(message, ...args) })
-  refusingRestorer.track('rf', { ...createRawCapture(), sawReasoning: true, rawReasoning: [RAW_A] })
+  const rfCapture = createRawCapture()
+  rfCapture.sawReasoning = true
+  rfCapture.rawBlocks = [{ type: 'reasoning', text: RAW_A }]
+  refusingRestorer.track('rf', rfCapture)
   refusingRestorer.handleSessionEvent(refusing, chunkEvent(1, 0))
   refusingRestorer.handleSessionEvent(refusing, messageEvent(landed, 3))
   await drainMicrotasks()
@@ -297,7 +333,7 @@ async function testPlaceholderStillRestores() {
 }
 
 await testCaptureRecordsRaw()
-await testCaptureMultiBlock()
+await testRestoreKeepsWireOrder()
 await testRestoreMessage()
 await testRestorerLandsReplacement()
 await testRestorerGuards()

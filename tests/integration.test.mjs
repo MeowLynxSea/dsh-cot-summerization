@@ -13,32 +13,42 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { FileSettingsProvider } from '@deepseek-ai/dsh-settings-file'
-import LlmRuntime, { BlockAssembler, LlmAdapter, createAssistantMessage } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { BlockAssembler, LlmAdapter, createAssistantMessage, markAgentLoopRequest } from '@deepseek-ai/dsh-llm'
 import { SessionStore } from '@deepseek-ai/dsh-session'
 import * as plugin from '../lib/index.js'
 
-// --- fake Chat Completions summarizer endpoint ---
+// --- fake Chat Completions summarizer endpoint (deferred like a real API:
+// the summary lands after the tool-call chunks, so the summary block opens
+// late — the field shape where the landed order differs from the wire) ---
 const summaryCalls = []
 globalThis.fetch = async (url, init) => {
   summaryCalls.push({ url: String(url), body: JSON.parse(init.body) })
+  await new Promise((resolve) => setTimeout(resolve, 1))
   return new Response(JSON.stringify({ choices: [{ message: { content: 'CLEAN SUMMARY' } }] }), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   })
 }
 
-// --- fake upstream model: interleaved reasoning + text ---
+// --- fake upstream model: pi-ai-shaped tool-call turn, reasoning FIRST ---
+// The wire order is [reasoning, tool-call]; the adapter's replay state
+// describes that wire order, and later requests validate the replay state
+// against the historical content block by block.
 class FakeAdapter extends LlmAdapter {
   async *stream() {
-    yield { type: 'block-start', index: 0, blockType: 'text' }
-    yield { type: 'block-start', index: 1, blockType: 'reasoning' }
-    yield { type: 'text-delta', index: 0, text: 'Hi there' }
-    yield { type: 'reasoning-delta', index: 1, text: 'RAW SECRET PLAN for the user' }
-    yield { type: 'reasoning-delta', index: 1, text: ' with more secret details' }
-    yield { type: 'block-end', index: 0, block: { type: 'text', text: 'Hi there' } }
-    yield { type: 'block-end', index: 1, block: { type: 'reasoning', text: 'RAW SECRET PLAN for the user with more secret details' } }
+    yield { type: 'block-start', index: 0, blockType: 'reasoning' }
+    yield { type: 'reasoning-delta', index: 0, text: 'RAW SECRET PLAN for the user' }
+    yield { type: 'reasoning-delta', index: 0, text: ' with more secret details' }
+    yield { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'RAW SECRET PLAN for the user with more secret details' } }
+    yield { type: 'block-start', index: 1, blockType: 'tool-call' }
+    yield { type: 'tool-call-delta', index: 1, id: 'call-1', name: 'bash', argumentsDelta: '{"command":"ls"}' }
+    yield { type: 'block-end', index: 1, block: { type: 'tool-call', id: 'call-1', name: 'bash', arguments: '{"command":"ls"}' } }
     yield { type: 'usage', usage: { inputTokens: 5, outputTokens: 10 } }
-    yield { type: 'finish', reason: { kind: 'stop' } }
+    yield {
+      type: 'finish',
+      reason: { kind: 'tool-calls' },
+      replayState: { kind: 'pi-ai', version: 1, blocks: [{ type: 'reasoning' }, { type: 'tool-call' }] },
+    }
   }
 }
 
@@ -55,7 +65,7 @@ await ctx.plugin(plugin, {
 })
 ctx.llm.registerAdapter(['fake'], new FakeAdapter())
 
-const stream = ctx.llm.stream({ provider: 'fake', model: 'anything', messages: [] })
+const stream = ctx.llm.stream(markAgentLoopRequest({ provider: 'fake', model: 'anything', messages: [] }))
 const assembler = new BlockAssembler()
 for await (const chunk of stream) assembler.push(chunk)
 const message = assembler.message()
@@ -68,7 +78,9 @@ assert.ok(cot, 'cot-summarizer namespace must be registered for the Web settings
 assert.equal(cot.value.model, 'tiny', 'settings surface the resolved configuration')
 
 // The assembled assistant message has the summary, not the raw reasoning.
-assert.deepEqual(message.content.map((b) => b.type), ['text', 'reasoning'])
+// The summary block opens after the tool call, so the loop's first-seen
+// order is [tool-call, reasoning].
+assert.deepEqual(message.content.map((b) => b.type), ['tool-call', 'reasoning'])
 assert.equal(message.content[1].text, 'CLEAN SUMMARY')
 const serialized = JSON.stringify(message)
 assert.ok(!serialized.includes('RAW SECRET'), 'raw chain of thought must not appear anywhere')
@@ -88,15 +100,16 @@ console.log('integration test passed: raw CoT replaced by summary through the re
 // A loop-shaped call carries a sessionId, so the plugin tracks the stream.
 // Replaying what dsh-agent-loop does with the stream (append each chunk, then
 // the assembled assistant/message) must land one model-only replacement: the
-// UI transcript keeps the summary event, deriveMessages() returns the raw.
+// UI transcript keeps the summary event, deriveMessages() returns the raw
+// chain of thought in the ADAPTER's wire order with the replay state intact.
 new SessionStore(ctx) // Service constructor registers `ctx.sessions`
 const session = ctx.sessions.create('it-session')
-const loopStream = ctx.llm.stream({
+const loopStream = ctx.llm.stream(markAgentLoopRequest({
   provider: 'fake',
   model: 'anything',
   messages: [],
   sessionId: 'it-session',
-})
+}))
 const loopAssembler = new BlockAssembler()
 const chunkSeqs = []
 for await (const chunk of loopStream) {
@@ -117,6 +130,8 @@ const landed = session.append('assistant/message', {
 }, { surfaceOp: 'append', sourceEventSeqs: chunkSeqs })
 assert.equal(landed.data.message.content.at(-1).text, 'CLEAN SUMMARY',
   'the append-origin event (the UI transcript) keeps the summary')
+assert.deepEqual(landed.data.message.content.map((b) => b.type), ['tool-call', 'reasoning'],
+  'the landed (transcript) message carries the emitted first-seen order')
 
 // The restorer appends in a microtask once the message event dispatch returns.
 await new Promise((resolve) => setTimeout(resolve, 0))
@@ -126,12 +141,32 @@ const replacement = events.at(-1)
 assert.equal(replacement.type, 'assistant/message')
 assert.deepEqual(replacement.surfaceOp, { op: 'replace', start: landed.seq, end: landed.seq },
   'one model-only replacement event shadows the summary message node')
+assert.deepEqual(replacement.data.message.content.map((b) => b.type), ['reasoning', 'tool-call'],
+  'the restored content keeps the adapter WIRE order the replay state validates against')
+assert.equal(replacement.data.message.content[0].text, 'RAW SECRET PLAN for the user with more secret details')
+assert.deepEqual(replacement.data.message.source.replayState, { kind: 'pi-ai', version: 1, blocks: [{ type: 'reasoning' }, { type: 'tool-call' }] },
+  'the adapter replay state rides the wire-exact content')
 
 const derived = session.deriveMessages()
 const derivedAssistant = derived.find((m) => m.role === 'assistant')
 assert.ok(derivedAssistant, 'the assistant message still derives for the next model request')
+assert.deepEqual(derivedAssistant.content.map((b) => b.type), ['reasoning', 'tool-call'])
 const derivedReasoning = derivedAssistant.content.find((b) => b.type === 'reasoning')
 assert.equal(derivedReasoning.text, 'RAW SECRET PLAN for the user with more secret details',
   'the model-visible history replays the RAW chain of thought, not the summary')
 
-console.log('integration test passed: model history keeps the raw CoT while the transcript keeps the summary')
+console.log('integration test passed: model history keeps the raw CoT in wire order while the transcript keeps the summary')
+
+// --- non-loop callers (session titles, compaction, one-shots) pass through ---
+// A title-shaped call carries a sessionId but is not a marked agent-loop
+// request: it must not be summarized, and it must not touch the tracker (in
+// the field it ran concurrently with the loop's first step and silently
+// cancelled that step's restoration).
+const callsBefore = summaryCalls.length
+const titleStream = ctx.llm.stream({ provider: 'fake', model: 'anything', messages: [], sessionId: 'it-session' })
+const titleAssembler = new BlockAssembler()
+for await (const chunk of titleStream) titleAssembler.push(chunk)
+assert.equal(summaryCalls.length, callsBefore, 'a non-loop request never reaches the summarizer')
+assert.ok(JSON.stringify(titleAssembler.blocks()).includes('RAW SECRET'),
+  'a non-loop request passes through untouched (its reasoning never renders in the UI)')
+console.log('integration test passed: non-loop llm callers pass through untouched')

@@ -13,7 +13,7 @@
  * folds append-origin events exclusively) keeps showing the summary.
  * @module dsh-cot-summerization/history
  */
-import type { AssistantMessage } from '@deepseek-ai/dsh-llm';
+import type { AssistantMessage, ContentBlock } from '@deepseek-ai/dsh-llm';
 import type { SessionEvent, SessionEventMap, SurfaceIntent } from '@deepseek-ai/dsh-session';
 /**
  * Raw-reasoning facts recorded while one model stream is rewritten. Populated
@@ -25,22 +25,26 @@ export interface RawCoTCapture {
     sawReasoning: boolean;
     /** Whether the raw reasoning was forwarded verbatim (nothing to restore). */
     rawShown: boolean;
-    /** Raw reasoning text per upstream reasoning block, in stream order. */
-    rawReasoning: string[];
+    /**
+     * The assistant content assembled over the UNTOUCHED upstream stream — the
+     * exact blocks the adapter produced, in wire order (a reasoning-first
+     * stream stays reasoning-first). Set at the finish chunk; the replacement
+     * message is rebuilt from these blocks, because the emitted stream reorders
+     * them (the summary block opens late, so the loop's first-seen block order
+     * differs from the wire) and adapters validate replay state against the
+     * wire order ("block N does not match assistant content").
+     */
+    rawBlocks: ContentBlock[] | undefined;
     /** Adapter replay state from the terminal finish chunk, when present. */
     replayState: unknown;
 }
 /** A fresh capture for one model call. */
 export declare function createRawCapture(): RawCoTCapture;
-/** Record the start of one upstream reasoning block. */
-export declare function captureReasoningStart(capture: RawCoTCapture): void;
-/** Append one raw reasoning delta to the current upstream reasoning block. */
-export declare function captureReasoningDelta(capture: RawCoTCapture, text: string): void;
 /**
  * Build the replacement assistant message for the model-visible surface: the
- * landed message with its reasoning blocks restored to the raw chain of
- * thought, and the adapter replay state reattached (the streamed rewrite had
- * to drop it because the assembled content no longer matched it).
+ * wire-exact upstream content (raw reasoning restored) with the adapter
+ * replay state reattached (the streamed rewrite had to drop it because the
+ * assembled content no longer matched it).
  *
  * @param message - the landed (summary) assistant message from the loop.
  * @param capture - raw facts recorded during the same model stream.

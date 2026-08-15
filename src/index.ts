@@ -29,6 +29,7 @@ import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-settings'
 // Type-only import activates the session Events declaration (`session/event`).
 import type {} from '@deepseek-ai/dsh-session'
+import { BlockAssembler, isAgentLoopRequest } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import {
   Config,
@@ -39,13 +40,7 @@ import {
 } from './config.ts'
 import { summarizeCoT, type SummarizeOptions } from './summarize.ts'
 import { installCotSummarizerWeb } from './web.ts'
-import {
-  captureReasoningDelta,
-  captureReasoningStart,
-  createRawCapture,
-  createRawHistoryRestorer,
-  type RawCoTCapture,
-} from './history.ts'
+import { createRawCapture, createRawHistoryRestorer, type RawCoTCapture } from './history.ts'
 
 export {
   createRawCapture,
@@ -212,6 +207,13 @@ export async function* transformCoTStream(
   let pendingError: unknown = null
   /** The raw segment handed to the in-flight call, for echo detection. */
   let pendingSegment = ''
+  /**
+   * Assembly over the UNTOUCHED upstream stream — the wire-exact blocks the
+   * adapter produced. The replacement message for the model-visible surface
+   * is rebuilt from these (the emitted stream reorders blocks, and adapters
+   * validate replay state against the wire order).
+   */
+  const rawAssembler = new BlockAssembler()
 
   /** The index the replacement block occupies: the first raw reasoning block's. */
   const blockIndex = (): number => (summaryIndex === -1 ? 0 : summaryIndex)
@@ -314,6 +316,9 @@ export async function* transformCoTStream(
     !rawShown && rawCoT.trim().length >= cfg.minReasoningChars && rawCoT.length > lastSegmentStart
 
   for await (const chunk of upstream) {
+    // Every upstream chunk — including the swallowed reasoning — feeds the
+    // wire-exact assembly the surface restoration replays.
+    rawAssembler.push(chunk)
     // A settled summarizer call is folded at the next chunk boundary so the
     // upstream stream is never paused for it (concurrency stays at one).
     if (pendingSettled) {
@@ -326,10 +331,7 @@ export async function* transformCoTStream(
       case 'block-start': {
         if (chunk.blockType === 'reasoning') {
           sawReasoning = true
-          if (capture !== undefined) {
-            capture.sawReasoning = true
-            captureReasoningStart(capture)
-          }
+          if (capture !== undefined) capture.sawReasoning = true
           if (summaryIndex === -1) summaryIndex = chunk.index
           continue
         }
@@ -338,10 +340,7 @@ export async function* transformCoTStream(
       }
       case 'reasoning-delta': {
         sawReasoning = true
-        if (capture !== undefined) {
-          capture.sawReasoning = true
-          captureReasoningDelta(capture, chunk.text)
-        }
+        if (capture !== undefined) capture.sawReasoning = true
         rawCoT += chunk.text
         maybeFirePartial()
         continue
@@ -376,7 +375,10 @@ export async function* transformCoTStream(
         continue
       }
       case 'finish': {
-        if (capture !== undefined) capture.replayState = chunk.replayState
+        if (capture !== undefined) {
+          capture.replayState = chunk.replayState
+          capture.rawBlocks = rawAssembler.blocks()
+        }
         if (!sawReasoning) {
           yield chunk
           return
@@ -423,6 +425,9 @@ export async function* transformCoTStream(
       }
     }
   }
+  // A stream that ended without a finish chunk still assembled raw content
+  // the loop may land as a message.
+  if (capture !== undefined && capture.rawBlocks === undefined) capture.rawBlocks = rawAssembler.blocks()
 }
 
 /** Plugin entry: register settings, then wrap every streaming model call. */
@@ -460,7 +465,12 @@ export function apply(ctx: Context, config: CotSummarizerConfig = {}): () => voi
     options: GenerateOptions,
     next: () => AsyncIterable<StreamChunk>,
   ): AsyncIterable<StreamChunk> {
-    if (!cfg.enabled) {
+    // Only agent-loop requests land in a session transcript; other llm/stream
+    // callers (session titles, compaction, one-shots) never render a Think
+    // row, may run concurrently with the loop's own call on the SAME session
+    // id (a title call would overwrite the loop's tracker and silently skip
+    // restoration), and pay a pointless summarizer round trip.
+    if (!cfg.enabled || !isAgentLoopRequest(options)) {
       yield* next()
       return
     }
