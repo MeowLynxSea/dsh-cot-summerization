@@ -288,6 +288,23 @@ async function testCatgirlStyleDedup() {
   console.log('ok - catgirl-style 喵~-terminated duplicates are dropped')
 }
 
+async function testSharedCoreDedup() {
+  // A restatement with a different prefix but the same contiguous core is
+  // caught by the longest-common-substring check even when the bigram
+  // similarity is below the threshold.
+  const summarize = async (_raw, _cfg, _signal, options) => {
+    if (options?.previousSummary === undefined) {
+      return '若每种无限，全抽桃子则永远凑不齐，故无有限步保证！'
+    }
+    return '若允许重复，全抽同味则永远凑不齐，故无有限步保证！又讨论了有限情形。'
+  }
+  const out = await collect(transformCoTStream(streamingUpstream(7), cfg({ chunkChars: 60 }), summarize))
+  const text = reasoningText(out)
+  assert.equal((text.match(/无有限步保证/g) || []).length, 1, 'the shared-core restatement is dropped')
+  assert.ok(text.includes('又讨论了有限情形'), 'the genuinely new sentence is kept')
+  console.log('ok - restatements sharing a contiguous core are dropped')
+}
+
 await testStyleAndLanguageComposition()
 await testStreamingPartials()
 await testIncrementalOff()
@@ -299,5 +316,6 @@ await testAbortedShowsPartialsOnly()
 await testPartialFailureContinues()
 await testSegmentDedup()
 await testCatgirlStyleDedup()
+await testSharedCoreDedup()
 await testMultiReasoningBlocks()
 console.log('all transform tests passed')

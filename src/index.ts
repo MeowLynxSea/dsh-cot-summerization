@@ -88,6 +88,30 @@ function sentenceSimilarity(a: string, b: string): number {
 }
 
 /**
+ * Length of the longest common substring of two normalized sentences. A
+ * restatement often keeps one contiguous core ("永远凑不齐，故无有限步保证")
+ * while varying the prefix, which bigram similarity waters down.
+ */
+function longestCommonSubstring(a: string, b: string): number {
+  let best = 0
+  const row = new Array(b.length + 1).fill(0)
+  for (let i = 1; i <= a.length; i++) {
+    let prev = 0
+    for (let j = 1; j <= b.length; j++) {
+      const current = row[j]
+      if (a[i - 1] === b[j - 1]) {
+        row[j] = prev + 1
+        if (row[j] > best) best = row[j]
+      } else {
+        row[j] = 0
+      }
+      prev = current
+    }
+  }
+  return best
+}
+
+/**
  * Drop sentences from a segment result that already appear (verbatim or
  * near-verbatim) in the emitted summary — segment calls tend to restate the
  * running conclusion, which reads as duplication. Short fragments pass
@@ -102,9 +126,14 @@ function dedupeSentences(result: string, emitted: string): string {
   const kept: string[] = []
   for (const part of splitSentences(result)) {
     const norm = normalizeSentence(part)
-    if (norm.length < 8 || !existing.some((s) => sentenceSimilarity(s, norm) >= 0.7)) {
+    if (norm.length < 8) {
       kept.push(part)
+      continue
     }
+    const duplicate = existing.some((s) => (
+      sentenceSimilarity(s, norm) >= 0.7 || longestCommonSubstring(s, norm) >= 12
+    ))
+    if (!duplicate) kept.push(part)
   }
   return kept.join('')
 }
