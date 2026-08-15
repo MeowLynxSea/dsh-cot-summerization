@@ -1,0 +1,7 @@
+# dsh-cot-summerization bundle patch: mounts the plugin into a profile layer
+# stack. Runtime defaults live at the plugin's config boundary; users override
+# them in the Web Client settings page (namespace `cot-summarizer`) or in their
+# profile patch row with the same id.
+- insert:
+    - id: cot-summarizer
+      name: dsh-cot-summerization
