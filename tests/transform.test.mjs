@@ -243,7 +243,7 @@ async function testMultiReasoningBlocks() {
 async function testStyleAndLanguageComposition() {
   const forced = resolveConfig({ language: '中文', style: 'segmented' })
   assert.ok(forced.systemPrompt.includes('Write the summary in 中文.'), 'language override appends to the system prompt')
-  assert.ok(forced.systemPrompt.includes('paragraph title line'), 'style preset appends to the system prompt')
+  assert.ok(forced.systemPrompt.includes('标题：说明'), 'style preset appends to the system prompt')
 
   const custom = resolveConfig({ style: 'custom', customStyle: '用打油诗的风格总结' })
   assert.ok(custom.systemPrompt.includes('用打油诗的风格总结'), 'custom style prompt appends verbatim')
@@ -258,6 +258,20 @@ async function testStyleAndLanguageComposition() {
   console.log('ok - language override and style presets/custom compose into the system prompt')
 }
 
+async function testSegmentDedup() {
+  const summarize = async (_raw, _cfg, _signal, options) => {
+    if (options?.previousSummary === undefined) {
+      return '经过最坏情况分析，结论是需要摸4次糖果。'
+    }
+    return '经过最坏情况分析，结论是需要看4次糖果。又验证了推广情形。'
+  }
+  const out = await collect(transformCoTStream(streamingUpstream(7), cfg({ chunkChars: 60 }), summarize))
+  const text = reasoningText(out)
+  assert.equal((text.match(/结论是需要/g) || []).length, 1, 'a near-verbatim repeat is dropped')
+  assert.ok(text.includes('又验证了推广情形'), 'the new sentence is kept')
+  console.log('ok - near-duplicate sentences from later segments are dropped')
+}
+
 await testStyleAndLanguageComposition()
 await testStreamingPartials()
 await testIncrementalOff()
@@ -267,5 +281,6 @@ await testErrorHide()
 await testErrorPassThrough()
 await testAbortedShowsPartialsOnly()
 await testPartialFailureContinues()
+await testSegmentDedup()
 await testMultiReasoningBlocks()
 console.log('all transform tests passed')

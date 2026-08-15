@@ -34,7 +34,18 @@ export const STYLE_PROMPTS: Record<Exclude<SummaryStyle, 'none' | 'custom'>, str
   'first-person': 'Write the summary from the assistant\'s first-person perspective, using "I will" / "I need to" openings where natural (for example: "I will first analyze the constraints, then derive the algorithm.").',
   rigorous: 'Write in a rigorous, precise, formal style: use exact technical terms, state every condition and conclusion explicitly, avoid casual or vague wording.',
   catgirl: 'Write in an adorable catgirl persona (喵~): playful, warm and lively, with catgirl interjections and expressions, while keeping the content accurate and complete.',
-  segmented: 'Structure the summary in segments: each segment is a short paragraph title line, followed by a blank line, followed by the detailed explanation of that part, followed by a blank line before the next segment.',
+  segmented: `Structure the summary in segments. Each segment is exactly: a title on its own line, a line break, the detailed explanation, a line break. Segments are separated by a blank line.
+
+Example:
+思路分析
+
+先考虑最坏情况：摸三颗各不同，第四颗必重复。
+
+结论
+
+至少需要 4 次。
+
+Rules: the title and the explanation are NEVER on the same line (forbidden: "标题：说明"). The character limit must not break this structure — if they conflict, keep the structure and shorten the explanation instead. End the whole output with a line break.`,
 }
 
 /**

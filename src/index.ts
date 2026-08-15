@@ -57,6 +57,54 @@ function endsAtBoundary(text: string): boolean {
   return SENTENCE_END.test(trimmed)
 }
 
+/** Split text into sentence-ish units, keeping the boundary punctuation. */
+function splitSentences(text: string): string[] {
+  return text.split(/(?<=[。！？!?…\n])/)
+}
+
+/** Normalize a sentence for duplicate comparison: strip whitespace and filler. */
+function normalizeSentence(sentence: string): string {
+  return sentence.replace(/[\s喵~〜～]+/g, '').toLowerCase()
+}
+
+/** Bigram-overlap similarity in [0, 1] between two normalized sentences. */
+function sentenceSimilarity(a: string, b: string): number {
+  if (a === b) return 1
+  const bigrams = (s: string): Set<string> => {
+    const out = new Set<string>()
+    for (let i = 0; i < s.length - 1; i++) out.add(s.slice(i, i + 2))
+    return out
+  }
+  const A = bigrams(a)
+  const B = bigrams(b)
+  if (A.size === 0 || B.size === 0) return 0
+  let common = 0
+  for (const gram of A) if (B.has(gram)) common += 1
+  return (2 * common) / (A.size + B.size)
+}
+
+/**
+ * Drop sentences from a segment result that already appear (verbatim or
+ * near-verbatim) in the emitted summary — segment calls tend to restate the
+ * running conclusion, which reads as duplication. Short fragments pass
+ * through untouched.
+ */
+function dedupeSentences(result: string, emitted: string): string {
+  if (emitted === '') return result
+  const existing = splitSentences(emitted)
+    .map(normalizeSentence)
+    .filter((s) => s.length >= 8)
+  if (existing.length === 0) return result
+  const kept: string[] = []
+  for (const part of splitSentences(result)) {
+    const norm = normalizeSentence(part)
+    if (norm.length < 8 || !existing.some((s) => sentenceSimilarity(s, norm) >= 0.8)) {
+      kept.push(part)
+    }
+  }
+  return kept.join('')
+}
+
 /**
  * Wrap one model stream: swallow every reasoning chunk, stream everything
  * else untouched, and emit the summarized reasoning in place of the raw
@@ -145,10 +193,11 @@ export async function* transformCoTStream(
   /**
    * Fold the in-flight call's result into the stream: each segment summary
    * is appended as-is (segments never depend on each other, so a rewritten
-   * or failed segment cannot stall the stream). Blocks only while the call
-   * is still running (callers invoke it after the call settled, or at the
-   * terminal finish where blocking is unavoidable). Failures are logged and
-   * skipped; the end-of-stream fallback policy lives in the finish handler.
+   * or failed segment cannot stall the stream), with sentences that repeat
+   * the already-emitted summary dropped. Blocks only while the call is still
+   * running (callers invoke it after the call settled, or at the terminal
+   * finish where blocking is unavoidable). Failures are logged and skipped;
+   * the end-of-stream fallback policy lives in the finish handler.
    */
   async function* foldPending(): AsyncGenerator<StreamChunk> {
     if (pending === undefined) return
@@ -160,7 +209,8 @@ export async function* transformCoTStream(
       log('cot-summarizer: %s', error instanceof Error ? error.message : String(error))
       return
     }
-    if (result !== '') yield* emitTail(result)
+    const deduped = dedupeSentences(result, emitted)
+    if (deduped !== '') yield* emitTail(deduped)
   }
 
   /** Decide whether another segment call is due, given the raw text just grew. */

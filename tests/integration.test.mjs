@@ -79,6 +79,6 @@ assert.equal(summaryCalls[0].url, 'https://summarizer.test/v1/chat/completions')
 assert.equal(summaryCalls[0].body.model, 'tiny')
 assert.equal(summaryCalls[0].body.messages[1].content, 'RAW SECRET PLAN for the user with more secret details')
 assert.ok(summaryCalls[0].body.messages[0].content.includes('Write the summary in 中文.'), 'language override composes into the system prompt')
-assert.ok(summaryCalls[0].body.messages[0].content.includes('paragraph title line'), 'style preset composes into the system prompt')
+assert.ok(summaryCalls[0].body.messages[0].content.includes('标题：说明'), 'style preset composes into the system prompt')
 
 console.log('integration test passed: raw CoT replaced by summary through the real llm/stream waterfall')
