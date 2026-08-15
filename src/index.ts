@@ -131,7 +131,7 @@ function dedupeSentences(result: string, emitted: string): string {
       continue
     }
     const duplicate = existing.some((s) => (
-      sentenceSimilarity(s, norm) >= 0.7 || longestCommonSubstring(s, norm) >= 12
+      sentenceSimilarity(s, norm) >= 0.65 || longestCommonSubstring(s, norm) >= 12
     ))
     if (!duplicate) kept.push(part)
   }
@@ -176,6 +176,8 @@ export async function* transformCoTStream(
   let pending: Promise<string> | undefined
   let pendingSettled = false
   let pendingError: unknown = null
+  /** The raw segment handed to the in-flight call, for echo detection. */
+  let pendingSegment = ''
 
   /** The index the replacement block occupies: the first raw reasoning block's. */
   const blockIndex = (): number => (summaryIndex === -1 ? 0 : summaryIndex)
@@ -192,6 +194,7 @@ export async function* transformCoTStream(
     lastTriggerAt = Date.now()
     pendingError = null
     pendingSettled = false
+    pendingSegment = segment
     pending = summarize(segment, cfg, callerSignal, emitted === '' ? undefined : { previousSummary: emitted })
       .then((result) => {
         pendingSettled = true
@@ -236,11 +239,23 @@ export async function* transformCoTStream(
     if (pending === undefined) return
     const result = await pending
     const error = pendingError
+    const segment = pendingSegment
     pending = undefined
     pendingSettled = false
     if (error !== null) {
       log('cot-summarizer: %s', error instanceof Error ? error.message : String(error))
       return
+    }
+    // Echo guard: a summarizer that returns the raw segment (near-verbatim)
+    // instead of summarizing would leak the hidden reasoning into the block.
+    if (segment.length >= 200) {
+      const normResult = normalizeSentence(result)
+      const normSegment = normalizeSentence(segment)
+      if (sentenceSimilarity(normSegment, normResult) >= 0.85
+        || longestCommonSubstring(normSegment, normResult) >= 40) {
+        log('cot-summarizer: dropped a summary that echoes the raw reasoning')
+        return
+      }
     }
     const deduped = dedupeSentences(result, emitted)
     if (deduped !== '') yield* emitTail(deduped)

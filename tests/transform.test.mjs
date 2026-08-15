@@ -305,6 +305,23 @@ async function testSharedCoreDedup() {
   console.log('ok - restatements sharing a contiguous core are dropped')
 }
 
+async function testEchoedRawDropped() {
+  // A summarizer that echoes the raw segment back (near-verbatim) must not
+  // leak the hidden reasoning into the block.
+  const segmentText = 'X'.repeat(60) + ' 用户问了一个关于糖果的问题。' + 'Y'.repeat(160)
+  const upstream = [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    { type: 'reasoning-delta', index: 0, text: segmentText },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'raw' } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ]
+  const summarize = async (raw) => raw // 原样回显
+  const out = await collect(transformCoTStream(upstream, cfg(), summarize))
+  const text = reasoningText(out)
+  assert.ok(!text.includes('糖果的问题'), 'an echoed raw segment is not emitted')
+  console.log('ok - a summary echoing the raw reasoning is dropped')
+}
+
 await testStyleAndLanguageComposition()
 await testStreamingPartials()
 await testIncrementalOff()
@@ -317,5 +334,6 @@ await testPartialFailureContinues()
 await testSegmentDedup()
 await testCatgirlStyleDedup()
 await testSharedCoreDedup()
+await testEchoedRawDropped()
 await testMultiReasoningBlocks()
 console.log('all transform tests passed')
