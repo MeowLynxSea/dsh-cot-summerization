@@ -272,6 +272,22 @@ async function testSegmentDedup() {
   console.log('ok - near-duplicate sentences from later segments are dropped')
 }
 
+async function testCatgirlStyleDedup() {
+  // Catgirl summaries end clauses with 喵~ instead of punctuation; the
+  // splitter must treat it as a sentence boundary for dedup to work.
+  const summarize = async (_raw, _cfg, _signal, options) => {
+    if (options?.previousSummary === undefined) {
+      return '考虑最坏情况需要4颗喵~还要防备同色喵~'
+    }
+    return '考虑最坏情况需要4颗喵~再验证推广情形喵~'
+  }
+  const out = await collect(transformCoTStream(streamingUpstream(7), cfg({ chunkChars: 60 }), summarize))
+  const text = reasoningText(out)
+  assert.equal((text.match(/需要4颗/g) || []).length, 1, 'the 喵~-terminated repeat is dropped')
+  assert.ok(text.includes('再验证推广情形'), 'the new 喵~-terminated sentence is kept')
+  console.log('ok - catgirl-style 喵~-terminated duplicates are dropped')
+}
+
 await testStyleAndLanguageComposition()
 await testStreamingPartials()
 await testIncrementalOff()
@@ -282,5 +298,6 @@ await testErrorPassThrough()
 await testAbortedShowsPartialsOnly()
 await testPartialFailureContinues()
 await testSegmentDedup()
+await testCatgirlStyleDedup()
 await testMultiReasoningBlocks()
 console.log('all transform tests passed')
