@@ -138,6 +138,13 @@ export async function* transformCoTStream(
           if (replacement !== undefined) {
             yield* reasoningBlocks(maxIndex + 1, replacement)
           }
+          // The stream was rewritten (raw reasoning swallowed), so the
+          // adapter's lossless replay state no longer matches the assembled
+          // assistant content — dropping it keeps later requests from
+          // rejecting the historical message ("replay state does not match").
+          const { replayState: _replayState, ...finishWithoutReplay } = chunk
+          yield finishWithoutReplay
+          return
         }
         yield chunk
         return

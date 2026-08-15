@@ -45,7 +45,7 @@ function typicalUpstream() {
     { type: 'block-end', index: 0, block: { type: 'text', text: 'Hello world' } },
     { type: 'block-end', index: 1, block: { type: 'reasoning', text: 'SECRET step one: the user wants a plan SECRET step two: then execute it carefully' } },
     { type: 'usage', usage: { inputTokens: 10, outputTokens: 20 } },
-    { type: 'finish', reason: { kind: 'stop' } },
+    { type: 'finish', reason: { kind: 'stop' }, replayState: { blocks: ['text', 'reasoning'] } },
   ]
 }
 
@@ -62,6 +62,9 @@ async function testReplaceWithSummary() {
   assert.ok(out.some(c => c.type === 'text-delta' && c.text === 'Hello'))
   assert.ok(out.some(c => c.type === 'usage'))
   assert.equal(out.at(-1).type, 'finish')
+  // The rewritten stream must drop the adapter replay state: it describes the
+  // original blocks and would be rejected on the next request.
+  assert.ok(!('replayState' in out.at(-1)), 'replay state dropped after stream rewrite')
   // The summary arrives as one reasoning block before finish.
   const reasoning = out.filter(c => c.type === 'reasoning-delta')
   assert.equal(reasoning.length, 1)
@@ -82,11 +85,11 @@ async function testNoReasoningPassThrough() {
     { type: 'block-start', index: 0, blockType: 'text' },
     { type: 'text-delta', index: 0, text: 'plain' },
     { type: 'block-end', index: 0, block: { type: 'text', text: 'plain' } },
-    { type: 'finish', reason: { kind: 'stop' } },
+    { type: 'finish', reason: { kind: 'stop' }, replayState: { blocks: ['text'] } },
   ]
   let summarized = false
   const out = await collect(run(upstream, cfg(), async () => { summarized = true; return 'x' }))
-  assert.deepEqual(out, upstream)
+  assert.deepEqual(out, upstream, 'untouched stream keeps the adapter replay state')
   assert.equal(summarized, false, 'no summarizer call without reasoning')
   console.log('ok - no-reasoning stream passes through untouched')
 }
