@@ -295,23 +295,27 @@ function SettingsSection({ t }: SettingsSectionProps) {
 }
 
 const STYLES = `
-.dshc-section { padding: 0 4px 12px; }
+.dshc-section { padding: 0 4px 12px; color: var(--dsw-alias-label-primary); }
 .dshc-head h3 { margin: 0 0 4px; font-size: 15px; }
-.dshc-head p { margin: 0 0 14px; color: var(--ds-text-secondary, #667); font-size: 12px; line-height: 1.5; }
+.dshc-head p { margin: 0 0 14px; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 1.5; }
 .dshc-grid { display: grid; gap: 14px; }
 .dshc-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .dshc-field-label { font-weight: 600; }
 .dshc-field input[type="text"], .dshc-field input[type="password"], .dshc-field input[type="number"], .dshc-field select, .dshc-field textarea {
-  width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--ds-border, #d4d4d8);
-  border-radius: 6px; background: var(--ds-surface, #fff); color: inherit; font: inherit;
+  width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit;
 }
-.dshc-field input[type="checkbox"] { width: 18px; height: 18px; }
-.dshc-field-hint { color: var(--ds-text-secondary, #667); font-size: 11px; line-height: 1.4; }
+.dshc-field input[type="text"]:focus, .dshc-field input[type="password"]:focus, .dshc-field input[type="number"]:focus, .dshc-field select:focus, .dshc-field textarea:focus {
+  outline: none; border-color: var(--dsw-alias-border-l4);
+}
+.dshc-field input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--dsw-alias-brand-primary); }
+.dshc-field-hint { color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 1.4; }
 .dshc-actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
-.dshc-save { padding: 6px 16px; border: 0; border-radius: 6px; background: var(--ds-accent, #4f7cff); color: #fff; font: inherit; font-size: 13px; cursor: pointer; }
+.dshc-save { padding: 6px 16px; border: 0; border-radius: 6px; background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground); font: inherit; font-size: 13px; cursor: pointer; }
+.dshc-save:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }
 .dshc-save:disabled { opacity: 0.6; cursor: default; }
-.dshc-saved { color: var(--ds-accent, #4f7cff); font-size: 12px; }
-.dshc-error { color: #d33; font-size: 12px; }
+.dshc-saved { color: var(--dsw-alias-state-success-primary); font-size: 12px; }
+.dshc-error { color: var(--dsw-alias-state-error-primary); font-size: 12px; }
 `
 
 /** Required services: the slot registry and the locale seat. */
