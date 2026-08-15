@@ -260,11 +260,12 @@ export function apply(ctx: ClientContext): void {
   }, 'dsh-cot-summerization: styles')
   const t = ctx.locale.bind(NS)
   const scope = ctx.settingsScope.bind<CotSummarizerConfig>({ namespace: NS })
+  const Dummy = (): React.ReactElement => <p>cot: dummy rendered</p>
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'cot-summarizer',
     order: 31,
     label: () => t('nav'),
     inject: () => ({ scope, t }),
-  }, SettingsSection))
+  }, Dummy))
 }
