@@ -5,7 +5,7 @@
  * intended message.
  *
  * Timing-dependent triggers are kept deterministic: tests run far faster than
- * `chunkIntervalMs` (default 6000), so only the volume + sentence-boundary
+ * `chunkIntervalMs` (default 4000), so only the volume + sentence-boundary
  * trigger fires.
  */
 import assert from 'node:assert/strict'
@@ -54,15 +54,15 @@ function streamingUpstream(count = 6) {
 }
 
 /**
- * A summarizer mock that obeys the extension contract: every call re-issues
- * its previous summary and appends a marker, exactly like the real prompt
- * asks.
+ * A summarizer mock for the segment-append contract: every call receives only
+ * the newly arrived reasoning segment and returns an independent marker that
+ * is appended to the block.
  */
-function prefixMock() {
+function segmentMock() {
   const calls = []
   const summarize = async (raw, _cfg, _signal, options) => {
     calls.push({ raw, previous: options?.previousSummary })
-    return `${options?.previousSummary ?? ''}[${calls.length}]`
+    return `[${calls.length}]`
   }
   return { summarize, calls }
 }
@@ -73,17 +73,18 @@ function reasoningText(out) {
 
 async function testStreamingPartials() {
   const config = cfg({ chunkChars: 60 })
-  const { summarize, calls } = prefixMock()
-  const out = await collect(transformCoTStream(streamingUpstream(), config, summarize))
+  const { summarize, calls } = segmentMock()
+  // 7 sentences of 34 chars: segments fire at 68/136/204 chars (sentence
+  // boundaries), and a final call covers the remaining tail at block-end.
+  const out = await collect(transformCoTStream(streamingUpstream(7), config, summarize))
 
-  // 6 sentences of 34 chars: partials fire at 68/136/204 chars (sentence
-  // boundaries), plus one final call over the complete raw.
-  assert.equal(calls.length, 4, 'three partials and one final call')
+  assert.equal(calls.length, 4, 'three segment calls plus the tail call')
   assert.equal(calls[0].previous, undefined)
   assert.equal(calls[1].previous, '[1]')
   assert.equal(calls[2].previous, '[1][2]')
   assert.equal(calls[3].previous, '[1][2][3]')
-  assert.ok(calls[3].raw.includes('SECRET step 5'), 'the final call receives the complete raw')
+  assert.equal(calls[0].raw.length, 68, 'first segment is the first two sentences')
+  assert.equal(calls[3].raw, 'SECRET step 6: user wants a plan. ', 'the tail call gets only the leftover sentence')
 
   // The raw reasoning never leaks, everything else passes through.
   const json = JSON.stringify(out)
@@ -93,8 +94,7 @@ async function testStreamingPartials() {
   assert.equal(out.at(-1).type, 'finish')
   assert.ok(!('replayState' in out.at(-1)), 'replay state dropped after stream rewrite')
 
-  // The summary grows incrementally and lands as one reasoning block whose
-  // text is the final call's result (the partials are its prefixes).
+  // Each segment summary is appended; the block holds the concatenation.
   const text = reasoningText(out)
   assert.equal(text, '[1][2][3][4]')
   const firstBlockStart = out.findIndex((c) => c.type === 'block-start' && c.blockType === 'reasoning')
@@ -104,14 +104,15 @@ async function testStreamingPartials() {
   const { blocks } = assemble(out)
   assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'text'])
   assert.equal(blocks[0].text, '[1][2][3][4]')
-  console.log('ok - near-realtime partial summaries grow the Think row above the reply')
+  console.log('ok - segment summaries stream in and the tail call closes the block above the reply')
 }
 
 async function testIncrementalOff() {
-  const { summarize, calls } = prefixMock()
+  const { summarize, calls } = segmentMock()
   const out = await collect(transformCoTStream(streamingUpstream(), cfg({ incremental: false, chunkChars: 60 }), summarize))
   assert.equal(calls.length, 1, 'incremental off means exactly one summary call')
   assert.equal(calls[0].previous, undefined)
+  assert.equal(calls[0].raw.length, 204, 'the single call covers the complete raw')
   assert.equal(reasoningText(out), '[1]')
   console.log('ok - incremental off collapses to a single end-of-stream summary')
 }
@@ -182,45 +183,31 @@ async function testAbortedShowsPartialsOnly() {
     { type: 'finish', reason: { kind: 'aborted' }, replayState: { blocks: ['reasoning'] } },
   ]
   const calls = []
-  const out = await collect(transformCoTStream(upstream, cfg({ chunkChars: 60 }), async (raw, _cfg, _signal, options) => {
+  const out = await collect(transformCoTStream(upstream, cfg({ chunkChars: 60 }), async (raw) => {
     calls.push(raw)
-    return `${options?.previousSummary ?? ''}[x]`
+    return '[x]'
   }, controller.signal))
-  assert.equal(calls.length, 2, 'partials fired during reasoning, no final call after abort')
-  assert.ok(reasoningText(out).endsWith('[x]'), 'landed partial summaries are kept on abort')
+  assert.equal(calls.length, 2, 'segments fired during reasoning, no call after abort')
+  assert.ok(reasoningText(out).endsWith('[x]'), 'landed segment summaries are kept on abort')
   assert.equal(out.at(-1).type, 'finish')
   assert.equal(out.at(-1).reason.kind, 'aborted')
   assert.ok(!('replayState' in out.at(-1)))
-  console.log('ok - abort keeps landed partials and never runs the final call')
+  console.log('ok - abort keeps landed segments and never runs further calls')
 }
 
-async function testDeviatingFinalSkipped() {
+async function testPartialFailureContinues() {
   const calls = []
   const summarize = async (raw, _cfg, _signal, options) => {
-    calls.push(raw.length)
-    if (calls.length === 4) return 'COMPLETELY REWRITTEN SUMMARY'
-    return `${options?.previousSummary ?? ''}[${calls.length}]`
+    calls.push(raw)
+    if (calls.length === 2) throw new Error('transient boom')
+    return `[${calls.length}]`
   }
-  const out = await collect(transformCoTStream(streamingUpstream(), cfg({ chunkChars: 60 }), summarize))
+  const out = await collect(transformCoTStream(streamingUpstream(7), cfg({ chunkChars: 60 }), summarize))
   assert.equal(calls.length, 4)
   const text = reasoningText(out)
-  assert.equal(text, '[1][2][3]', 'a rewritten final is skipped; the last partial stays')
-  console.log('ok - a final result that rewrites the summary is skipped without corrupting the block')
-}
-
-async function testDeviatingFinalCommonPrefix() {
-  // 14 sentences; chunkChars 34 fires a partial at every sentence, so the
-  // emitted prefix is long enough for the common-prefix fallback to apply.
-  const calls = []
-  const summarize = async (raw, _cfg, _signal, options) => {
-    calls.push(raw.length)
-    if (calls.length === 15) return `${options.previousSummary.slice(0, 23)}Z REVISED`
-    return `${options?.previousSummary ?? ''}[${calls.length}]`
-  }
-  const out = await collect(transformCoTStream(streamingUpstream(14), cfg({ chunkChars: 34 }), summarize))
-  const text = reasoningText(out)
-  assert.ok(text.endsWith('Z REVISED'), 'the tail beyond the common prefix is appended')
-  console.log('ok - a final sharing a long common prefix appends its tail')
+  assert.equal(text, '[1][3][4]', 'a failed segment is skipped and streaming continues')
+  assert.equal(calls[2].previous ?? undefined, undefined, 'the failed segment is not retried')
+  console.log('ok - a failed segment call is skipped without stalling later segments')
 }
 
 async function testMultiReasoningBlocks() {
@@ -240,17 +227,17 @@ async function testMultiReasoningBlocks() {
   ]
   const calls = []
   const summarize = async (raw, _cfg, _signal, options) => {
-    calls.push(raw)
-    return `${options?.previousSummary ?? ''}[${calls.length}]`
+    calls.push({ raw, previous: options?.previousSummary })
+    return `[${calls.length}]`
   }
   const out = await collect(transformCoTStream(upstream, cfg({ chunkChars: 60 }), summarize))
-  assert.ok(calls.length >= 3, 'partial + early final + complete re-summary')
-  assert.ok(calls.at(-1).includes('SECRET step 3'), 'the last call covers both reasoning blocks')
-  const text = reasoningText(out)
-  assert.ok(text.endsWith(`[${calls.length}]`), 'the block ends with the complete summary')
+  assert.equal(calls.length, 2)
+  assert.ok(calls[1].raw.includes('SECRET step 3'), 'the second segment covers the second reasoning block')
+  assert.equal(calls[1].previous, '[1]')
+  assert.equal(reasoningText(out), '[1][2]')
   const { blocks } = assemble(out)
   assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'text'], 'both raw reasoning blocks swallowed')
-  console.log('ok - multi-reasoning-block streams re-summarize over the complete raw')
+  console.log('ok - multi-reasoning-block streams continue segmenting across blocks')
 }
 
 await testStreamingPartials()
@@ -260,7 +247,6 @@ await testShortReasoningPassedVerbatim()
 await testErrorHide()
 await testErrorPassThrough()
 await testAbortedShowsPartialsOnly()
-await testDeviatingFinalSkipped()
-await testDeviatingFinalCommonPrefix()
+await testPartialFailureContinues()
 await testMultiReasoningBlocks()
 console.log('all transform tests passed')

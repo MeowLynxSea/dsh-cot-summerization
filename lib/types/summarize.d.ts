@@ -12,10 +12,11 @@ export declare class SummarizeError extends Error {
 /** Options for one summarizer call beyond the raw text itself. */
 export interface SummarizeOptions {
     /**
-     * Previous partial summary of the same raw chain of thought. When present,
-     * the summarizer must reproduce it verbatim as the start of its output and
-     * only extend it, so the replacement block grows smoothly instead of
-     * jumping between partial calls.
+     * Previous partial summary of the same chain of thought. When present, the
+     * raw text is ONLY the newly arrived reasoning segment; the model reads the
+     * previous summary for continuity and style but must NOT repeat it, so the
+     * appended output grows the block without ever depending on verbatim
+     * reproduction of earlier text.
      */
     previousSummary?: string;
 }

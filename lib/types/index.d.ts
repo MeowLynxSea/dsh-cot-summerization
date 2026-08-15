@@ -5,14 +5,14 @@
  * The plugin wraps the `llm/stream` waterfall. Raw reasoning deltas are
  * swallowed (they never reach the session log, the model history, or the
  * UI). While the raw chain of thought streams, the collected reasoning is
- * summarized in natural chunks — trigger points prefer sentence boundaries
+ * summarized segment by segment — trigger points prefer sentence boundaries
  * and are throttled by character volume and elapsed time. Each partial call
- * re-summarizes everything seen so far and must keep its previous partial
- * summary verbatim as a prefix, so the replacement reasoning block grows
- * smoothly instead of jumping; a final call on the completed reasoning
- * closes it. The Web Client renders the result as the usual "Think"
- * disclosure row. Settings surface in the Web Client settings page under
- * the `cot-summarizer` namespace.
+ * summarizes ONLY the newly arrived reasoning segment (the previous summary
+ * is passed as continuity context but never needs to be reproduced), so the
+ * replacement reasoning block grows reliably as segments land; a final call
+ * covers whatever tail remains when the reasoning completes. The Web Client
+ * renders the result as the usual "Think" disclosure row. Settings surface
+ * in the Web Client settings page under the `cot-summarizer` namespace.
  * @module dsh-cot-summerization
  */
 import type { Context } from '@deepseek-ai/cordis';
@@ -32,12 +32,12 @@ export type SummarizeFn = (raw: string, cfg: ResolvedCotSummarizerConfig, signal
  * chain of thought.
  *
  * The replacement reasoning block reuses the index of the first raw
- * reasoning block, and its content grows incrementally as partial summaries
- * land — the block-start is emitted with the first partial, so the
- * assembled message keeps the summary above the reply text. The transform
- * is index-safe for the session log's `BlockAssembler`: forwarded blocks
- * keep their indices verbatim, and the summary block never collides with
- * them because the raw reasoning index is freed by swallowing.
+ * reasoning block, and its content grows segment by segment as partial
+ * summaries land — the block-start is emitted with the first partial, so
+ * the assembled message keeps the summary above the reply text. The
+ * transform is index-safe for the session log's `BlockAssembler`: forwarded
+ * blocks keep their indices verbatim, and the summary block never collides
+ * with them because the raw reasoning index is freed by swallowing.
  * @param upstream - the inner stream from `next()`.
  * @param cfg - resolved configuration captured at listener invocation.
  * @param summarize - summarizer call, injectable for tests.

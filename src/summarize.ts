@@ -18,27 +18,25 @@ export class SummarizeError extends Error {
 /** Options for one summarizer call beyond the raw text itself. */
 export interface SummarizeOptions {
   /**
-   * Previous partial summary of the same raw chain of thought. When present,
-   * the summarizer must reproduce it verbatim as the start of its output and
-   * only extend it, so the replacement block grows smoothly instead of
-   * jumping between partial calls.
+   * Previous partial summary of the same chain of thought. When present, the
+   * raw text is ONLY the newly arrived reasoning segment; the model reads the
+   * previous summary for continuity and style but must NOT repeat it, so the
+   * appended output grows the block without ever depending on verbatim
+   * reproduction of earlier text.
    */
   previousSummary?: string
 }
 
 /**
- * Instruction appended when a previous partial summary exists: the model
- * re-summarizes the complete raw text seen so far, keeping its previous
- * output verbatim as the prefix and extending it with the new reasoning.
+ * Instruction used when a previous partial summary exists: summarize only
+ * the new reasoning segment as a natural continuation. `{segmentChars}` is
+ * replaced with the per-segment length budget derived from the summary cap.
  */
-const INCREMENTAL_INSTRUCTION = `The raw reasoning below is still streaming, so it now contains MORE content than the previous partial summary you produced for it. That previous summary is quoted at the end.
+const SEGMENT_INSTRUCTION = `The chain of thought below is streaming, and this message contains ONLY the reasoning that arrived since the previous summary. Your previous summary so far is quoted at the end — read it for continuity and style, but do NOT repeat it.
 
-Produce the COMPLETE updated summary of ALL the raw reasoning below:
-1. Begin your output with the previous partial summary EXACTLY as quoted — every character identical, no rephrasing, no omission, no extra line before it.
-2. Continue seamlessly with the summary of the newly arrived reasoning.
-3. If the combined text would exceed the length limit, keep the previous part verbatim and compress only the newly added part.
+Summarize the new reasoning below concisely, in the SAME language as the new reasoning. Your output will be appended directly after the previous summary, so it must read as a seamless continuation of it. Do not quote the raw reasoning verbatim and do not mention the summarization process.
 
-Output ONLY the updated summary text.`
+Output ONLY the summary of the new reasoning, at most {segmentChars} characters.`
 
 /**
  * Normalize a configured base URL into the endpoint used for POST
@@ -98,7 +96,7 @@ export async function summarizeCoT(
 
   const userContent = options?.previousSummary === undefined
     ? raw
-    : `${INCREMENTAL_INSTRUCTION}\n\nRaw reasoning so far:\n\n${raw}\n\nPrevious partial summary:\n\n${options.previousSummary}`
+    : `${SEGMENT_INSTRUCTION.replace('{segmentChars}', String(Math.max(80, Math.floor(cfg.maxSummaryChars / 4))))}\n\nNew reasoning to summarize:\n\n${raw}\n\nPrevious summary so far (do not repeat it):\n\n${options.previousSummary}`
 
   let response: Response
   try {

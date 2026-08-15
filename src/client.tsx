@@ -296,7 +296,7 @@ function SettingsSection({ t }: SettingsSectionProps) {
           <input
             type="number"
             min={500}
-            value={draft.chunkIntervalMs ?? 6000}
+            value={draft.chunkIntervalMs ?? 4000}
             onChange={(event) => {
               const parsed = Number(event.target.value)
               if (Number.isFinite(parsed)) set('chunkIntervalMs', parsed)

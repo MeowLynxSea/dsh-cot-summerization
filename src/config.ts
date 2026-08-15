@@ -78,7 +78,7 @@ export const Config: Schema<CotSummarizerConfig> = z.object({
   onError: z.union(['hide', 'pass-through'] as const).default('hide'),
   incremental: z.boolean().default(true),
   chunkChars: z.number().default(300),
-  chunkIntervalMs: z.number().default(6000),
+  chunkIntervalMs: z.number().default(4000),
 })
 
 /** Configuration after static validation, with every default materialized. */
@@ -112,7 +112,7 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
   const onError = config.onError ?? 'hide'
   const incremental = config.incremental ?? true
   const chunkChars = config.chunkChars ?? 300
-  const chunkIntervalMs = config.chunkIntervalMs ?? 6000
+  const chunkIntervalMs = config.chunkIntervalMs ?? 4000
 
   if (minReasoningChars < 0) throw new Error('cot-summarizer: minReasoningChars must be >= 0')
   if (maxSummaryChars < 1) throw new Error('cot-summarizer: maxSummaryChars must be >= 1')

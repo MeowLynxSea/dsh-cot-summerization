@@ -5,14 +5,14 @@
  * The plugin wraps the `llm/stream` waterfall. Raw reasoning deltas are
  * swallowed (they never reach the session log, the model history, or the
  * UI). While the raw chain of thought streams, the collected reasoning is
- * summarized in natural chunks — trigger points prefer sentence boundaries
+ * summarized segment by segment — trigger points prefer sentence boundaries
  * and are throttled by character volume and elapsed time. Each partial call
- * re-summarizes everything seen so far and must keep its previous partial
- * summary verbatim as a prefix, so the replacement reasoning block grows
- * smoothly instead of jumping; a final call on the completed reasoning
- * closes it. The Web Client renders the result as the usual "Think"
- * disclosure row. Settings surface in the Web Client settings page under
- * the `cot-summarizer` namespace.
+ * summarizes ONLY the newly arrived reasoning segment (the previous summary
+ * is passed as continuity context but never needs to be reproduced), so the
+ * replacement reasoning block grows reliably as segments land; a final call
+ * covers whatever tail remains when the reasoning completes. The Web Client
+ * renders the result as the usual "Think" disclosure row. Settings surface
+ * in the Web Client settings page under the `cot-summarizer` namespace.
  * @module dsh-cot-summerization
  */
 
@@ -57,26 +57,18 @@ function endsAtBoundary(text: string): boolean {
   return SENTENCE_END.test(trimmed)
 }
 
-/** Length of the longest common prefix of two strings. */
-function commonPrefixLength(a: string, b: string): number {
-  const limit = Math.min(a.length, b.length)
-  let i = 0
-  while (i < limit && a[i] === b[i]) i += 1
-  return i
-}
-
 /**
  * Wrap one model stream: swallow every reasoning chunk, stream everything
  * else untouched, and emit the summarized reasoning in place of the raw
  * chain of thought.
  *
  * The replacement reasoning block reuses the index of the first raw
- * reasoning block, and its content grows incrementally as partial summaries
- * land — the block-start is emitted with the first partial, so the
- * assembled message keeps the summary above the reply text. The transform
- * is index-safe for the session log's `BlockAssembler`: forwarded blocks
- * keep their indices verbatim, and the summary block never collides with
- * them because the raw reasoning index is freed by swallowing.
+ * reasoning block, and its content grows segment by segment as partial
+ * summaries land — the block-start is emitted with the first partial, so
+ * the assembled message keeps the summary above the reply text. The
+ * transform is index-safe for the session log's `BlockAssembler`: forwarded
+ * blocks keep their indices verbatim, and the summary block never collides
+ * with them because the raw reasoning index is freed by swallowing.
  * @param upstream - the inner stream from `next()`.
  * @param cfg - resolved configuration captured at listener invocation.
  * @param summarize - summarizer call, injectable for tests.
@@ -97,30 +89,29 @@ export async function* transformCoTStream(
   let summaryClosed = false
   let rawShown = false
   let emitted = ''
+  /** Raw length already handed to a summarizer call; the next segment starts here. */
+  let lastSegmentStart = 0
   let lastTriggerAt = Date.now()
   let pending: Promise<string> | undefined
   let pendingSettled = false
-  let pendingRawSnapshot = 0
   let pendingError: unknown = null
-  let finalFired = false
-  let stalled = 0
 
   /** The index the replacement block occupies: the first raw reasoning block's. */
   const blockIndex = (): number => (summaryIndex === -1 ? 0 : summaryIndex)
 
   /**
-   * Start one summarizer call over the raw text accumulated so far. The call
-   * runs concurrently with the upstream stream (never paused); its result is
-   * folded in at the next chunk boundary once it settles.
+   * Start one summarizer call over the raw segment accumulated since the
+   * last call. The call runs concurrently with the upstream stream (never
+   * paused); its result is folded into the block at the next chunk boundary
+   * once it settles.
    */
-  const fire = (isFinal: boolean): void => {
-    const snapshot = rawCoT
-    pendingRawSnapshot = snapshot.length
+  const fire = (): void => {
+    const segment = rawCoT.slice(lastSegmentStart)
+    lastSegmentStart = rawCoT.length
     lastTriggerAt = Date.now()
     pendingError = null
     pendingSettled = false
-    if (isFinal) finalFired = true
-    pending = summarize(snapshot, cfg, callerSignal, emitted === '' ? undefined : { previousSummary: emitted })
+    pending = summarize(segment, cfg, callerSignal, emitted === '' ? undefined : { previousSummary: emitted })
       .then((result) => {
         pendingSettled = true
         return result
@@ -152,35 +143,12 @@ export async function* transformCoTStream(
   }
 
   /**
-   * Fold one completed summarizer result into the visible block: append the
-   * part beyond the already-emitted prefix — verbatim when the model
-   * complied, otherwise beyond the longest common prefix when the model kept
-   * most of the previous summary — or skip a result rewritten past
-   * recognition (the next call re-tries from the same prefix).
-   */
-  function* applyResult(result: string): Generator<StreamChunk> {
-    let tail = ''
-    if (result.startsWith(emitted)) {
-      tail = result.slice(emitted.length)
-    } else {
-      const common = commonPrefixLength(emitted, result)
-      if (common >= Math.max(16, Math.floor(emitted.length / 2))) tail = result.slice(common)
-    }
-    if (tail === '') {
-      stalled += 1
-      return
-    }
-    stalled = 0
-    yield* emitTail(tail)
-  }
-
-  /**
-   * Fold the in-flight call's result into the stream. Blocks only while the
-   * call is still running (the callers invoke it either after the call
-   * settled, or at the terminal finish where blocking is unavoidable).
-   * A partial failure is skipped (the final call gets another chance); the
-   * final call's failure follows the configured `onError` policy when
-   * nothing was emitted yet.
+   * Fold the in-flight call's result into the stream: each segment summary
+   * is appended as-is (segments never depend on each other, so a rewritten
+   * or failed segment cannot stall the stream). Blocks only while the call
+   * is still running (callers invoke it after the call settled, or at the
+   * terminal finish where blocking is unavoidable). Failures are logged and
+   * skipped; the end-of-stream fallback policy lives in the finish handler.
    */
   async function* foldPending(): AsyncGenerator<StreamChunk> {
     if (pending === undefined) return
@@ -190,44 +158,36 @@ export async function* transformCoTStream(
     pendingSettled = false
     if (error !== null) {
       log('cot-summarizer: %s', error instanceof Error ? error.message : String(error))
-      if (callerSignal?.aborted === true) return
-      if (!finalFired || emitted !== '') return
-      if (cfg.onError === 'pass-through') {
-        yield* emitRawReasoning(rawCoT.trim())
-      } else {
-        yield* emitTail(UNAVAILABLE_PLACEHOLDER)
-      }
       return
     }
-    if (result !== '') yield* applyResult(result)
+    if (result !== '') yield* emitTail(result)
   }
 
-  /** Decide whether another partial call is due, given the raw text just grew. */
+  /** Decide whether another segment call is due, given the raw text just grew. */
   const maybeFirePartial = (): void => {
-    if (pending !== undefined || finalFired || !cfg.incremental) return
-    if (stalled >= 2 || emitted.length >= cfg.maxSummaryChars) return
-    const since = rawCoT.length - pendingRawSnapshot
+    if (pending !== undefined || !cfg.incremental) return
+    const since = rawCoT.length - lastSegmentStart
     if (since < cfg.minReasoningChars) return
     const elapsed = Date.now() - lastTriggerAt
     const byVolume = since >= cfg.chunkChars && endsAtBoundary(rawCoT)
     const byTime = elapsed >= cfg.chunkIntervalMs
       && since >= Math.max(cfg.minReasoningChars, 64)
       && (endsAtBoundary(rawCoT) || elapsed >= cfg.chunkIntervalMs * 2)
-    if (byVolume || byTime) fire(false)
+    if (byVolume || byTime) fire()
   }
+
+  /** Whether an un-summarized tail of the raw reasoning is still pending. */
+  const hasUnsummarizedTail = (): boolean =>
+    !rawShown && rawCoT.trim().length >= cfg.minReasoningChars && rawCoT.length > lastSegmentStart
 
   for await (const chunk of upstream) {
     // A settled summarizer call is folded at the next chunk boundary so the
     // upstream stream is never paused for it (concurrency stays at one).
     if (pendingSettled) {
       yield* foldPending()
-      // The reasoning phase ended while the call was in flight: the final
-      // call runs now that the slot is free (its result is folded at a later
-      // boundary or at finish).
-      if (reasoningDone && !finalFired && !rawShown && pending === undefined) {
-        const trimmed = rawCoT.trim()
-        if (trimmed !== '' && trimmed.length >= cfg.minReasoningChars) fire(true)
-      }
+      // The reasoning phase ended while the call was in flight: the remaining
+      // tail is handed to the next call now that the slot is free.
+      if (reasoningDone && pending === undefined && hasUnsummarizedTail()) fire()
     }
     switch (chunk.type) {
       case 'block-start': {
@@ -255,12 +215,11 @@ export async function* transformCoTStream(
               // nothing to summarize
             } else if (trimmed.length < cfg.minReasoningChars) {
               yield* emitRawReasoning(trimmed)
-            } else if (pending === undefined) {
-              // Reasoning complete and no partial in flight: one final call
-              // over the complete raw closes the summary while the reply
-              // streams (folded at a later boundary, so the reply is never
-              // delayed).
-              fire(true)
+            } else if (pending === undefined && hasUnsummarizedTail()) {
+              // Reasoning complete: one final call covers the remaining tail
+              // while the reply streams (folded at a later boundary, so the
+              // reply is never delayed).
+              fire()
             }
           }
           continue
@@ -283,16 +242,20 @@ export async function* transformCoTStream(
         if (!aborted) {
           if (pending !== undefined) yield* foldPending()
           const trimmed = rawCoT.trim()
-          if (trimmed !== '' && !finalFired && !rawShown && trimmed.length >= cfg.minReasoningChars) {
-            // The reasoning never closed (an error finish) or closed with a
-            // partial still in flight: run the final call now.
-            fire(true)
+          if (hasUnsummarizedTail()) {
+            // The reasoning never closed (an error finish) or a tail remained:
+            // run the final segment call now.
+            fire()
             yield* foldPending()
-          } else if (finalFired && !rawShown && pendingRawSnapshot < rawCoT.length) {
-            // A multi-reasoning-block adapter grew the raw after the final
-            // fired: re-summarize over the complete raw.
-            fire(true)
-            yield* foldPending()
+          }
+          if (emitted === '' && !rawShown && trimmed.length >= cfg.minReasoningChars) {
+            // Every summarizer call failed and nothing was shown yet: apply
+            // the configured failure policy.
+            if (cfg.onError === 'pass-through') {
+              yield* emitRawReasoning(trimmed)
+            } else {
+              yield* emitTail(UNAVAILABLE_PLACEHOLDER)
+            }
           }
         }
         if (summaryStarted && !summaryClosed) {
