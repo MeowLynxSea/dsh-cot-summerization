@@ -72,5 +72,5 @@ npm test         # node tests/transform.test.mjs
 ```
 
 The package declares `dsh.bundle.patch` (see `cordis.patch.yml`) so `dsh plugin`
-reconciliation treats it as a bundle; `prepare` builds on install from a git
-dependency, and `lib/` is committed for registry/path installs.
+reconciliation treats it as a bundle; dependencies install straight from the committed `lib/` build output
+dependency, The `lib/` build output is committed, so git, registry, and path installs need no build step.
