@@ -101,10 +101,11 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 /** The plugin's settings page bound to the `cot-summarizer` namespace. */
 function SettingsSection({ scope, t }: SettingsSectionProps) {
-  if (scope === undefined || t === undefined) {
-    return <p>cot-summarizer: inject missing</p>
-  }
-  const snapshot = useSyncExternalStore(scope.subscribe, scope.getSnapshot)
+  if (scope === undefined || t === undefined) return null
+  const snapshot = useSyncExternalStore(
+    (listener) => scope.subscribe(listener),
+    () => scope.getSnapshot(),
+  )
   const [saved, setSaved] = useState<string>()
   const [saving, setSaving] = useState<string>()
   const savedTimer = useRef<ReturnType<typeof setTimeout>>()
@@ -260,12 +261,11 @@ export function apply(ctx: ClientContext): void {
   }, 'dsh-cot-summerization: styles')
   const t = ctx.locale.bind(NS)
   const scope = ctx.settingsScope.bind<CotSummarizerConfig>({ namespace: NS })
-  const Dummy = (): React.ReactElement => <p>cot: dummy rendered</p>
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'cot-summarizer',
     order: 31,
     label: () => t('nav'),
     inject: () => ({ scope, t }),
-  }, Dummy))
+  }, SettingsSection))
 }
