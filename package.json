@@ -38,6 +38,9 @@
     "test": "node tests/transform.test.mjs"
   },
   "dsh": {
+    "category": "extension",
+    "displayName": "思维链摘要",
+    "image": "https://raw.githubusercontent.com/MeowLynxSea/dsh-cot-summerization/main/assets/logo.svg",
     "bundle": {
       "patch": "./cordis.patch.yml"
     },
