@@ -101,6 +101,9 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 /** The plugin's settings page bound to the `cot-summarizer` namespace. */
 function SettingsSection({ scope, t }: SettingsSectionProps) {
+  if (scope === undefined || t === undefined) {
+    return <p>cot-summarizer: inject missing</p>
+  }
   const snapshot = useSyncExternalStore(scope.subscribe, scope.getSnapshot)
   const [saved, setSaved] = useState<string>()
   const [saving, setSaving] = useState<string>()
