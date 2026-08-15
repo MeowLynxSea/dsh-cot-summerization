@@ -147,6 +147,7 @@ export async function* transformCoTStream(
 
 /** Plugin entry: register settings, then wrap every streaming model call. */
 export function apply(ctx: Context, config: CotSummarizerConfig = {}): () => void {
+  ctx.logger.info('cot-summarizer: host plugin apply (config %o)', config)
   const scope = ctx.settings.register(COT_SUMMARIZER_SETTINGS_NAMESPACE, Config, {
     base: config,
     applies: 'live',
