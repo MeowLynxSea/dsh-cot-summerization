@@ -263,8 +263,8 @@ export function apply(ctx: ClientContext): void {
   const scope = ctx.settingsScope.bind<CotSummarizerConfig>({ namespace: NS })
   // diagnostics: dump the wire describe result into the document title
   setTimeout(() => {
-    void ctx.get('connection').api.settings.describe({}).then((response) => {
-      const namespaces = response.result.value?.namespaces?.map((n: { ns: string }) => n.ns) ?? []
+    void ctx.get('connection').api.settings.describe({}).then((response: { result: { ok: boolean; value?: { namespaces?: Array<{ ns: string }>; writable?: boolean } } }) => {
+      const namespaces = response.result.value?.namespaces?.map((n) => n.ns) ?? []
       document.title = `COT-DIAG: ${JSON.stringify(namespaces)}`
     }).catch((error: unknown) => {
       document.title = `COT-DIAG-ERR: ${error instanceof Error ? error.message : String(error)}`
