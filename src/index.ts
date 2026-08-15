@@ -12,6 +12,7 @@
  * @module dsh-cot-summerization
  */
 
+import { writeFileSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-settings'
@@ -147,6 +148,11 @@ export async function* transformCoTStream(
 
 /** Plugin entry: register settings, then wrap every streaming model call. */
 export function apply(ctx: Context, config: CotSummarizerConfig = {}): () => void {
+  try {
+    writeFileSync('/tmp/cot-host-applied.txt', new Date().toISOString(), 'utf8')
+  } catch {
+    // diagnostics only
+  }
   ctx.logger.warn('cot-summarizer: host plugin apply (config %o)', config)
   const scope = ctx.settings.register(COT_SUMMARIZER_SETTINGS_NAMESPACE, Config, {
     base: config,
