@@ -154,6 +154,12 @@ export function apply(ctx: Context, config: CotSummarizerConfig = {}): () => voi
     // diagnostics only
   }
   ctx.logger.warn('cot-summarizer: host plugin apply (config %o)', config)
+  try {
+    const namespaces = ctx.settings.describe().map((entry) => String(entry.ns))
+    writeFileSync('/tmp/cot-describe.txt', JSON.stringify(namespaces, null, 1), 'utf8')
+  } catch (error) {
+    writeFileSync('/tmp/cot-describe.txt', `ERROR: ${error instanceof Error ? error.message : String(error)}`, 'utf8')
+  }
   const scope = ctx.settings.register(COT_SUMMARIZER_SETTINGS_NAMESPACE, Config, {
     base: config,
     applies: 'live',
