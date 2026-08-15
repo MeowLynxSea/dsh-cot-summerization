@@ -3,6 +3,10 @@
  * Completions-compatible summarizer endpoint, the summarization prompt, and
  * fallback behavior when the summarizer call fails. The `cot-summarizer`
  * settings namespace renders in the Web Client settings page.
+ *
+ * Fields are intentionally flat (no nested `provider` object): the Web
+ * settings surface writes preference rows through the client settings-scope
+ * transport, which addresses one scalar field per write.
  * @module dsh-cot-summerization/config
  */
 
@@ -31,14 +35,12 @@ Output ONLY the summary text. No preamble, no markdown headings, no bullet lists
 export interface CotSummarizerConfig {
   /** Master switch; when off, streams pass through untouched. */
   enabled?: boolean
-  provider?: {
-    /** Chat Completions base URL, e.g. `https://api.deepseek.com/v1`. */
-    baseUrl?: string
-    /** API key for the summarizer endpoint. */
-    apiKey?: string
-    /** Summarizer model name. */
-    model?: string
-  }
+  /** Chat Completions base URL, e.g. `https://api.deepseek.com/v1`. */
+  baseUrl?: string
+  /** API key for the summarizer endpoint. */
+  apiKey?: string
+  /** Summarizer model name. */
+  model?: string
   /** Summarization system prompt; `{maxSummaryChars}` is substituted. */
   systemPrompt?: string
   /** Raw reasoning shorter than this is shown verbatim without a summarizer call. */
@@ -54,11 +56,9 @@ export interface CotSummarizerConfig {
 /** Configuration schema with documented defaults. */
 export const Config: Schema<CotSummarizerConfig> = z.object({
   enabled: z.boolean().default(true),
-  provider: z.object({
-    baseUrl: z.string().default(DEFAULT_BASE_URL),
-    apiKey: z.string().default(''),
-    model: z.string().default(DEFAULT_MODEL),
-  }),
+  baseUrl: z.string().default(DEFAULT_BASE_URL),
+  apiKey: z.string().default(''),
+  model: z.string().default(DEFAULT_MODEL),
   systemPrompt: z.string().default(DEFAULT_SYSTEM_PROMPT),
   minReasoningChars: z.number().default(32),
   maxSummaryChars: z.number().default(800),
@@ -69,11 +69,9 @@ export const Config: Schema<CotSummarizerConfig> = z.object({
 /** Configuration after static validation, with every default materialized. */
 export interface ResolvedCotSummarizerConfig {
   enabled: boolean
-  provider: {
-    baseUrl: string
-    apiKey: string
-    model: string
-  }
+  baseUrl: string
+  apiKey: string
+  model: string
   systemPrompt: string
   minReasoningChars: number
   maxSummaryChars: number
@@ -89,7 +87,6 @@ export interface ResolvedCotSummarizerConfig {
  * @returns the fully defaulted, validated configuration.
  */
 export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSummarizerConfig {
-  const provider = config.provider ?? {}
   const enabled = config.enabled ?? true
   const minReasoningChars = config.minReasoningChars ?? 32
   const maxSummaryChars = config.maxSummaryChars ?? 800
@@ -100,16 +97,14 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
   if (maxSummaryChars < 1) throw new Error('cot-summarizer: maxSummaryChars must be >= 1')
   if (timeoutMs < 1 || timeoutMs > 600000) throw new Error('cot-summarizer: timeoutMs must be within [1, 600000]')
 
-  const baseUrl = (provider.baseUrl ?? DEFAULT_BASE_URL).trim().replace(/\/+$/, '')
-  if (baseUrl === '') throw new Error('cot-summarizer: provider.baseUrl must not be empty')
+  const baseUrl = (config.baseUrl ?? DEFAULT_BASE_URL).trim().replace(/\/+$/, '')
+  if (baseUrl === '') throw new Error('cot-summarizer: baseUrl must not be empty')
 
   return {
     enabled,
-    provider: {
-      baseUrl,
-      apiKey: provider.apiKey ?? '',
-      model: (provider.model ?? DEFAULT_MODEL).trim(),
-    },
+    baseUrl,
+    apiKey: config.apiKey ?? '',
+    model: (config.model ?? DEFAULT_MODEL).trim(),
     systemPrompt: (config.systemPrompt ?? DEFAULT_SYSTEM_PROMPT)
       .replace('{maxSummaryChars}', String(maxSummaryChars)),
     minReasoningChars,

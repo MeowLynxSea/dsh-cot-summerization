@@ -11,7 +11,7 @@ import { resolveConfig } from '../lib/config.js'
 
 /** A resolved config with the given partial overrides. */
 function cfg(overrides = {}) {
-  return resolveConfig({ provider: { baseUrl: 'https://example.test/v1', model: 'mini', apiKey: 'k' }, ...overrides })
+  return resolveConfig({ baseUrl: 'https://example.test/v1', model: 'mini', apiKey: 'k', ...overrides })
 }
 
 function run(upstream, config, summarize, signal) {

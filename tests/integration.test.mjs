@@ -47,7 +47,9 @@ const ctx = new Context()
 new LlmRuntime(ctx) // Service constructor registers `ctx.llm`
 await ctx.plugin(FileSettingsProvider, { path: join(dir, 'settings.yaml'), dshHome: dir, watch: false })
 await ctx.plugin(plugin, {
-  provider: { baseUrl: 'https://summarizer.test/v1', apiKey: 'secret-key', model: 'tiny' },
+  baseUrl: 'https://summarizer.test/v1',
+  apiKey: 'secret-key',
+  model: 'tiny',
 })
 ctx.llm.registerAdapter(['fake'], new FakeAdapter())
 
@@ -61,7 +63,7 @@ rmSync(dir, { recursive: true, force: true })
 const described = ctx.settings.describe()
 const cot = described.find((d) => d.ns === 'cot-summarizer')
 assert.ok(cot, 'cot-summarizer namespace must be registered for the Web settings page')
-assert.equal(cot.value.provider.model, 'tiny', 'settings surface the resolved configuration')
+assert.equal(cot.value.model, 'tiny', 'settings surface the resolved configuration')
 
 // The assembled assistant message has the summary, not the raw reasoning.
 assert.deepEqual(message.content.map((b) => b.type), ['text', 'reasoning'])

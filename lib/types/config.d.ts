@@ -3,6 +3,10 @@
  * Completions-compatible summarizer endpoint, the summarization prompt, and
  * fallback behavior when the summarizer call fails. The `cot-summarizer`
  * settings namespace renders in the Web Client settings page.
+ *
+ * Fields are intentionally flat (no nested `provider` object): the Web
+ * settings surface writes preference rows through the client settings-scope
+ * transport, which addresses one scalar field per write.
  * @module dsh-cot-summerization/config
  */
 import type Schema from '@deepseek-ai/schemastery';
@@ -20,14 +24,12 @@ export declare const DEFAULT_SYSTEM_PROMPT = "You summarize the hidden chain of 
 export interface CotSummarizerConfig {
     /** Master switch; when off, streams pass through untouched. */
     enabled?: boolean;
-    provider?: {
-        /** Chat Completions base URL, e.g. `https://api.deepseek.com/v1`. */
-        baseUrl?: string;
-        /** API key for the summarizer endpoint. */
-        apiKey?: string;
-        /** Summarizer model name. */
-        model?: string;
-    };
+    /** Chat Completions base URL, e.g. `https://api.deepseek.com/v1`. */
+    baseUrl?: string;
+    /** API key for the summarizer endpoint. */
+    apiKey?: string;
+    /** Summarizer model name. */
+    model?: string;
     /** Summarization system prompt; `{maxSummaryChars}` is substituted. */
     systemPrompt?: string;
     /** Raw reasoning shorter than this is shown verbatim without a summarizer call. */
@@ -44,11 +46,9 @@ export declare const Config: Schema<CotSummarizerConfig>;
 /** Configuration after static validation, with every default materialized. */
 export interface ResolvedCotSummarizerConfig {
     enabled: boolean;
-    provider: {
-        baseUrl: string;
-        apiKey: string;
-        model: string;
-    };
+    baseUrl: string;
+    apiKey: string;
+    model: string;
     systemPrompt: string;
     minReasoningChars: number;
     maxSummaryChars: number;

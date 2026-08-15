@@ -60,10 +60,10 @@ export async function summarizeCoT(
   cfg: ResolvedCotSummarizerConfig,
   callerSignal?: AbortSignal,
 ): Promise<string> {
-  if (cfg.provider.model === '') throw new SummarizeError('summarizer model is not configured')
-  const url = chatCompletionsUrl(cfg.provider.baseUrl)
+  if (cfg.model === '') throw new SummarizeError('summarizer model is not configured')
+  const url = chatCompletionsUrl(cfg.baseUrl)
   const headers: Record<string, string> = { 'content-type': 'application/json' }
-  if (cfg.provider.apiKey !== '') headers.authorization = `Bearer ${cfg.provider.apiKey}`
+  if (cfg.apiKey !== '') headers.authorization = `Bearer ${cfg.apiKey}`
 
   const signal = callerSignal !== undefined
     ? AbortSignal.any([callerSignal, AbortSignal.timeout(cfg.timeoutMs)])
@@ -75,7 +75,7 @@ export async function summarizeCoT(
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: cfg.provider.model,
+        model: cfg.model,
         messages: [
           { role: 'system', content: cfg.systemPrompt },
           { role: 'user', content: raw },

@@ -39,15 +39,14 @@ Settings namespace: `cot-summarizer` (Web Client → Settings). Example:
 ```yaml
 cot-summarizer:
   enabled: true
-  provider:
-    baseUrl: https://api.deepseek.com/v1   # any Chat Completions base URL
-    apiKey: ""                              # API key for the summarizer
-    model: deepseek-chat                    # the "small model"
-  systemPrompt: ""                          # optional custom prompt; {maxSummaryChars} is substituted
-  minReasoningChars: 32                     # shorter reasoning is shown verbatim, no API call
-  maxSummaryChars: 800                      # summary length cap in the default prompt
-  timeoutMs: 30000                          # summarizer request timeout
-  onError: hide                             # hide | pass-through — behavior when summarization fails
+  baseUrl: https://api.deepseek.com/v1   # any Chat Completions base URL
+  apiKey: ""                              # API key for the summarizer
+  model: deepseek-chat                    # the "small model"
+  systemPrompt: ""                        # optional custom prompt; {maxSummaryChars} is substituted
+  minReasoningChars: 32                   # shorter reasoning is shown verbatim, no API call
+  maxSummaryChars: 800                    # summary length cap in the default prompt
+  timeoutMs: 30000                        # summarizer request timeout
+  onError: hide                           # hide | pass-through — behavior when summarization fails
 ```
 
 The default `systemPrompt` instructs the summarizer to keep the conclusion, the
