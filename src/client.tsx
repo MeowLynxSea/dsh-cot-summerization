@@ -293,7 +293,7 @@ function SettingsSection({ t }: SettingsSectionProps) {
               type="number"
               min={0}
               max={2000}
-              value={draft.typewriterIntervalMs ?? 30}
+              value={draft.typewriterIntervalMs ?? 15}
               onChange={(event) => {
                 const parsed = Number(event.target.value)
                 if (Number.isFinite(parsed)) set('typewriterIntervalMs', parsed)
@@ -333,7 +333,7 @@ function SettingsSection({ t }: SettingsSectionProps) {
         <Field label={t('language')} hint={t('languageHint')}>
           <input
             type="text"
-            value={draft.language ?? ''}
+            value={draft.language ?? '中文'}
             placeholder="中文 / English"
             onChange={(event) => { set('language', event.target.value) }}
           />
@@ -374,7 +374,7 @@ function SettingsSection({ t }: SettingsSectionProps) {
           <input
             type="number"
             min={1}
-            value={draft.maxSummaryChars ?? 800}
+            value={draft.maxSummaryChars ?? 50}
             onChange={(event) => {
               const parsed = Number(event.target.value)
               if (Number.isFinite(parsed)) set('maxSummaryChars', parsed)
@@ -385,7 +385,7 @@ function SettingsSection({ t }: SettingsSectionProps) {
           <input
             type="number"
             min={1}
-            value={draft.chunkChars ?? 300}
+            value={draft.chunkChars ?? 500}
             onChange={(event) => {
               const parsed = Number(event.target.value)
               if (Number.isFinite(parsed)) set('chunkChars', parsed)
@@ -396,7 +396,7 @@ function SettingsSection({ t }: SettingsSectionProps) {
           <input
             type="number"
             min={500}
-            value={draft.chunkIntervalMs ?? 4000}
+            value={draft.chunkIntervalMs ?? 8000}
             onChange={(event) => {
               const parsed = Number(event.target.value)
               if (Number.isFinite(parsed)) set('chunkIntervalMs', parsed)

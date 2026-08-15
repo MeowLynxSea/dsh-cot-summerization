@@ -45,7 +45,7 @@
 | 宣传名 | 现实 |
 | :--- | :--- |
 | **Information Never Existed™** | 原始 reasoning 增量在 `llm/stream` 拦截层被直接吞掉——UI、流式 chunk、落地 transcript 三处均无原文。模型可见历史除外:那里有一份 model-only 的 surface 替换事件,悄悄把原文还给了模型(推理性能要紧)。 |
-| **夏日渐进蒸馏** | 流式分段摘要:每凑满 `chunkChars`(300 字)或 `chunkIntervalMs`(4 秒)触发一次,切分点优先落在句边界。 |
+| **夏日渐进蒸馏** | 流式分段摘要:每凑满 `chunkChars`(500 字)或 `chunkIntervalMs`(8 秒)触发一次,切分点优先落在句边界。 |
 | **BioGram™ 重叠度量** | bigram Dice 系数,阈值 0.65。该阈值经历了 0.8 → 0.7 → 0.65 的科学调参过程。 |
 | **连续核心追踪引擎** | 最长公共子串,滚动数组实现,O(n·m),零依赖。用来逮住换了前缀、核心没变的复述。 |
 | **Nekomimi™ 边界协议** | 把「喵~」识别为句尾;计算相似度前先剥掉 `喵 / ~ / 〜 / ～`。无论摘要出自哪种风格,以「喵~」结尾的子句都会被正确切分。 |
@@ -118,16 +118,16 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 | `apiKey` | `""` | 摘要端点的 API key |
 | `model` | `deepseek-chat` | 改写员型号 |
 | `systemPrompt` | 内置 | 自定义提示词,支持 `{maxSummaryChars}` 占位符 |
-| `language` | `""` | 强制摘要语言;留空则跟随原始思维链 |
+| `language` | `"中文"` | 强制摘要语言;留空则跟随原始思维链 |
 | `style` | `none` | `none` / `concise` / `descriptive` / `wenyan` / `custom` |
 | `customStyle` | `""` | `style: custom` 时的自由文本风格 |
 | `minReasoningChars` | `32` | 短于此长度的思维链原文放行,不值得一次 API |
-| `maxSummaryChars` | `800` | 摘要长度上限 |
+| `maxSummaryChars` | `50` | 摘要长度上限 |
 | `timeoutMs` | `30000` | 改写员超时 |
 | `onError` | `hide` | `hide` 显示占位符 / `pass-through` 情急之下全裸放行 |
 | `incremental` | `true` | 流式分段摘要(近实时) |
-| `chunkChars` | `300` | 每段积累的原始字符数 |
-| `chunkIntervalMs` | `4000` | 慢流下两次摘要的最大间隔 |
+| `chunkChars` | `500` | 每段积累的原始字符数 |
+| `chunkIntervalMs` | `8000` | 慢流下两次摘要的最大间隔 |
 
 <details>
 <summary><b>行为细节(严肃模式)</b></summary>

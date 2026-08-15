@@ -117,18 +117,18 @@ export const Config: Schema<CotSummarizerConfig> = z.object({
   apiKey: z.string().default(''),
   model: z.string().default(DEFAULT_MODEL),
   systemPrompt: z.string().default(DEFAULT_SYSTEM_PROMPT),
-  language: z.string().default(''),
+  language: z.string().default('中文'),
   style: z.union(SUMMARY_STYLES).default('none'),
   customStyle: z.string().default(''),
   minReasoningChars: z.number().default(32),
-  maxSummaryChars: z.number().default(800),
+  maxSummaryChars: z.number().default(50),
   timeoutMs: z.number().default(30000),
   onError: z.union(['hide', 'pass-through'] as const).default('hide'),
   incremental: z.boolean().default(true),
-  chunkChars: z.number().default(300),
-  chunkIntervalMs: z.number().default(4000),
+  chunkChars: z.number().default(500),
+  chunkIntervalMs: z.number().default(8000),
   typewriter: z.boolean().default(false),
-  typewriterIntervalMs: z.number().default(30),
+  typewriterIntervalMs: z.number().default(15),
 })
 
 /** Configuration after static validation, with every default materialized. */
@@ -164,15 +164,15 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
   const enabled = config.enabled ?? true
   const preserveRawForModel = config.preserveRawForModel ?? true
   const minReasoningChars = config.minReasoningChars ?? 32
-  const maxSummaryChars = config.maxSummaryChars ?? 800
+  const maxSummaryChars = config.maxSummaryChars ?? 50
   const timeoutMs = config.timeoutMs ?? 30000
   const onError = config.onError ?? 'hide'
   const incremental = config.incremental ?? true
-  const chunkChars = config.chunkChars ?? 300
-  const chunkIntervalMs = config.chunkIntervalMs ?? 4000
+  const chunkChars = config.chunkChars ?? 500
+  const chunkIntervalMs = config.chunkIntervalMs ?? 8000
   const typewriter = config.typewriter ?? false
-  const typewriterIntervalMs = config.typewriterIntervalMs ?? 30
-  const language = (config.language ?? '').trim()
+  const typewriterIntervalMs = config.typewriterIntervalMs ?? 15
+  const language = (config.language ?? '中文').trim()
   const style = config.style ?? 'none'
   const customStyle = (config.customStyle ?? '').trim()
 

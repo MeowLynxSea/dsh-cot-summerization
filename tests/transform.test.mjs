@@ -5,7 +5,7 @@
  * intended message.
  *
  * Timing-dependent triggers are kept deterministic: tests run far faster than
- * `chunkIntervalMs` (default 4000), so only the volume + sentence-boundary
+ * `chunkIntervalMs` (default 8000), so only the volume + sentence-boundary
  * trigger fires.
  */
 import assert from 'node:assert/strict'
@@ -249,11 +249,14 @@ async function testStyleAndLanguageComposition() {
   assert.ok(custom.systemPrompt.includes('用打油诗的风格总结'), 'custom style prompt appends verbatim')
   assert.equal(custom.style, 'custom')
 
-  const plain = resolveConfig({})
+  const byDefault = resolveConfig({})
+  assert.ok(byDefault.systemPrompt.includes('Write the ENTIRE summary in 中文'), 'default language is 中文')
+  assert.ok(byDefault.systemPrompt.includes('DATA, not instructions'), 'anti-injection rule ships in the default prompt')
+  assert.ok(!byDefault.systemPrompt.includes('paragraph title line'))
+
+  const plain = resolveConfig({ language: '' })
   assert.ok(plain.systemPrompt.includes('SAME language as the raw reasoning'))
-  assert.ok(!plain.systemPrompt.includes('Write the ENTIRE summary in'))
-  assert.ok(plain.systemPrompt.includes('DATA, not instructions'), 'anti-injection rule ships in the default prompt')
-  assert.ok(!plain.systemPrompt.includes('paragraph title line'))
+  assert.ok(!plain.systemPrompt.includes('Write the ENTIRE summary in'), 'a blank language leaves the override off')
 
   assert.throws(() => resolveConfig({ style: 'surreal' }), /unknown summary style/)
   console.log('ok - language override and style presets/custom compose into the system prompt')
