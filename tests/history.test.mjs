@@ -52,12 +52,12 @@ function summarizingUpstream() {
 }
 
 /**
- * The regression shape from the field: a pi-ai-style tool-call turn where the
- * reasoning streams FIRST on the wire, so the emitted stream opens the tool
- * call before the late-opening summary block and the loop's landed message
- * orders the blocks [tool-call, reasoning]. The adapter's replay state
- * describes the WIRE order [reasoning, tool-call]; the restored message must
- * match the wire, not the landed order.
+ * A pi-ai-style tool-call turn: the reasoning streams first on the wire, and
+ * a deferred summarizer lands the summary only at finish, so the emitted
+ * stream opens the tool call before the late-opening summary block and the
+ * loop's landed message orders the blocks [tool-call, reasoning]. The
+ * adapter's replay state describes the WIRE order [reasoning, tool-call];
+ * the restored message must match the wire, not the landed order.
  */
 function toolCallUpstream() {
   return [
@@ -68,6 +68,28 @@ function toolCallUpstream() {
     { type: 'block-start', index: 1, blockType: 'tool-call' },
     { type: 'tool-call-delta', index: 1, id: 'call-1', name: 'bash', argumentsDelta: '{"command":"ls"}' },
     { type: 'block-end', index: 1, block: { type: 'tool-call', id: 'call-1', name: 'bash', arguments: '{"command":"ls"}' } },
+    { type: 'finish', reason: { kind: 'tool-calls' }, replayState: { kind: 'pi-ai', blocks: [{ type: 'reasoning' }, { type: 'tool-call' }] } },
+  ]
+}
+
+/**
+ * The second field failure's shape: an INTERLEAVED wire stream — thinking
+ * opens first, the tool call streams, then the thinking block closes — so
+ * the short-CoT verbatim path re-emits the reasoning at its block-END, after
+ * the tool call's block-start already passed. The loop's first-seen assembly
+ * orders the blocks [tool-call, reasoning] while the wire (and its replay
+ * state) is [reasoning, tool-call]. The finish must never carry the replay
+ * state, and the restore must rebuild the wire order.
+ */
+function interleavedShortUpstream() {
+  return [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    { type: 'reasoning-delta', index: 0, text: "Let's read the file." },
+    { type: 'block-start', index: 1, blockType: 'tool-call' },
+    { type: 'tool-call-delta', index: 1, id: 'call-9', name: 'read', argumentsDelta: '{"path":"x"}' },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: "Let's read the file." } },
+    { type: 'block-end', index: 1, block: { type: 'tool-call', id: 'call-9', name: 'read', arguments: '{"path":"x"}' } },
+    { type: 'usage', usage: { inputTokens: 1, outputTokens: 2 } },
     { type: 'finish', reason: { kind: 'tool-calls' }, replayState: { kind: 'pi-ai', blocks: [{ type: 'reasoning' }, { type: 'tool-call' }] } },
   ]
 }
@@ -116,7 +138,6 @@ async function testCaptureRecordsRaw() {
     async () => 'summarized.', undefined, () => {}, capture))
 
   assert.equal(capture.sawReasoning, true)
-  assert.equal(capture.rawShown, false)
   assert.deepEqual(capture.rawBlocks.map((b) => b.type), ['reasoning', 'text'], 'the wire blocks are assembled over the upstream stream')
   assert.equal(capture.rawBlocks[0].text, RAW_A + RAW_B, 'the raw reasoning is captured verbatim')
   assert.equal(capture.rawBlocks[1].text, 'Answer.')
@@ -175,9 +196,7 @@ async function testRestoreMessage() {
   assert.equal(restored.source.provider, 'deepseek')
   assert.notEqual(restored.id, landed.id, 'the replacement message gets a fresh identity')
 
-  // Nothing to restore in the pass-through / empty / identical cases.
-  const rawShown = { ...createRawCapture(), sawReasoning: true, rawShown: true, rawBlocks: capture.rawBlocks }
-  assert.equal(restoreRawAssistantMessage(landed, rawShown), undefined, 'verbatim streams need no restoration')
+  // Nothing to restore in the empty / identical cases.
   const empty = createRawCapture()
   empty.sawReasoning = true
   empty.rawBlocks = [{ type: 'text', text: 'Answer.' }]
@@ -185,7 +204,8 @@ async function testRestoreMessage() {
   const identical = createRawCapture()
   identical.sawReasoning = true
   identical.rawBlocks = [{ type: 'reasoning', text: 'summarized.' }]
-  assert.equal(restoreRawAssistantMessage(landed, identical), undefined, 'matching text means no surface churn')
+  assert.equal(restoreRawAssistantMessage(assembledMessage([{ type: 'reasoning', text: 'summarized.' }]), identical),
+    undefined, 'matching content means no surface churn')
   console.log('ok - the restore rebuilds the message with raw reasoning and the replay state')
 }
 
@@ -292,26 +312,57 @@ async function testRestorerGuards() {
   console.log('ok - the restorer guards against self-loops, mismatches, and refused appends')
 }
 
-async function testVerbatimStreamsKeepReplayState() {
-  // A stream that ends up showing the raw reasoning verbatim (short input)
-  // assembles content identical to upstream, so the finish chunk keeps the
-  // adapter replay state and no surface restoration is needed.
+async function testVerbatimStreamRestoresWireOrder() {
+  // Short reasoning passes through verbatim for DISPLAY, but the re-emitted
+  // reasoning block can land after later blocks (interleaved wire), so the
+  // finish still drops the replay state and the surface restore lands the
+  // wire-exact message with it. This is the second field failure
+  // (session.jsonl seq 166-172: landed [tool-call, reasoning] + replayState
+  // → INVALID_REPLAY_STATE at the next request, and no replacement followed
+  // because rawShown used to skip restoration).
   const capture = createRawCapture()
-  const upstream = [
-    { type: 'block-start', index: 0, blockType: 'reasoning' },
-    { type: 'reasoning-delta', index: 0, text: 'short thought' },
-    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'short thought' } },
-    { type: 'finish', reason: { kind: 'stop' }, replayState: { blocks: ['reasoning'] } },
-  ]
-  const out = await collect(transformCoTStream(upstream, cfg({ minReasoningChars: 100 }),
-    async () => 'x', undefined, () => {}, capture))
+  const out = await collect(transformCoTStream(interleavedShortUpstream(), cfg({ minReasoningChars: 32 }),
+    async () => { throw new Error('must not be called for short reasoning') }, undefined, () => {}, capture))
 
-  assert.deepEqual(out.at(-1).replayState, { blocks: ['reasoning'] }, 'verbatim streams keep the replay state')
-  assert.equal(capture.rawShown, true)
+  const last = out.at(-1)
+  assert.equal(last.type, 'finish')
+  assert.ok(!('replayState' in last), 'a touched stream never carries the finish replay state')
   const { blocks } = assemble(out)
-  const restored = restoreRawAssistantMessage(assembledMessage(blocks), capture)
-  assert.equal(restored, undefined, 'verbatim pass-through never restores')
-  console.log('ok - verbatim pass-through keeps the replay state and skips restoration')
+  assert.deepEqual(blocks.map((b) => b.type), ['tool-call', 'reasoning'],
+    'the verbatim re-emission still lands the tool call first (first-seen order)')
+
+  const landed = assembledMessage(blocks, { kind: 'pi-ai', blocks: [{ type: 'reasoning' }, { type: 'tool-call' }] })
+  const restored = restoreRawAssistantMessage(landed, capture)
+  assert.notEqual(restored, undefined, 'verbatim pass-through still restores the wire order')
+  assert.deepEqual(restored.content.map((b) => b.type), ['reasoning', 'tool-call'])
+  assert.deepEqual(restored.source.replayState, { kind: 'pi-ai', blocks: [{ type: 'reasoning' }, { type: 'tool-call' }] })
+  console.log('ok - verbatim short-CoT streams strip the replay state and restore the wire order')
+}
+
+async function testIdenticalContentSkipsRestore() {
+  // A landed message that already equals the wire assembly AND carries the
+  // captured replay state needs no surface churn; identical content whose
+  // replay state was stripped from the finish still gets a replacement that
+  // only re-attaches the state.
+  const capture = createRawCapture()
+  capture.sawReasoning = true
+  capture.rawBlocks = [{ type: 'reasoning', text: RAW_A }, { type: 'text', text: 'Answer.' }]
+  const identical = assembledMessage(capture.rawBlocks)
+  assert.equal(restoreRawAssistantMessage(identical, capture), undefined,
+    'wire-identical content with no captured state never produces a replacement')
+
+  capture.replayState = { kind: 'pi-ai' }
+  assert.notEqual(restoreRawAssistantMessage(identical, capture), undefined,
+    'identical content missing its stripped replay state still gets the state re-attached')
+
+  const withState = assembledMessage(capture.rawBlocks, { kind: 'pi-ai' })
+  assert.equal(restoreRawAssistantMessage(withState, capture), undefined,
+    'identical content already carrying the state is left alone')
+
+  const reordered = assembledMessage([{ type: 'text', text: 'Answer.' }, { type: 'reasoning', text: RAW_A }])
+  assert.notEqual(restoreRawAssistantMessage(reordered, capture), undefined,
+    'reordered content still gets the wire-order replacement')
+  console.log('ok - the restore decision compares the full content and the replay state')
 }
 
 async function testPlaceholderStillRestores() {
@@ -337,6 +388,7 @@ await testRestoreKeepsWireOrder()
 await testRestoreMessage()
 await testRestorerLandsReplacement()
 await testRestorerGuards()
-await testVerbatimStreamsKeepReplayState()
+await testVerbatimStreamRestoresWireOrder()
+await testIdenticalContentSkipsRestore()
 await testPlaceholderStillRestores()
 console.log('all history tests passed')

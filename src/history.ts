@@ -27,15 +27,13 @@ import type { SessionEvent, SessionEventMap, SurfaceIntent } from '@deepseek-ai/
 export interface RawCoTCapture {
   /** Whether the upstream stream contained any reasoning at all. */
   sawReasoning: boolean
-  /** Whether the raw reasoning was forwarded verbatim (nothing to restore). */
-  rawShown: boolean
   /**
    * The assistant content assembled over the UNTOUCHED upstream stream — the
-   * exact blocks the adapter produced, in wire order (a reasoning-first
-   * stream stays reasoning-first). Set at the finish chunk; the replacement
-   * message is rebuilt from these blocks, because the emitted stream reorders
-   * them (the summary block opens late, so the loop's first-seen block order
-   * differs from the wire) and adapters validate replay state against the
+   * exact blocks the adapter produced, in wire order. Set at the finish
+   * chunk; the replacement message is rebuilt from these blocks, because the
+   * emitted stream reorders them (the reasoning block is re-opened late — at
+   * its block-end or at finish — so the loop's first-seen block order can
+   * deviate from the wire) and adapters validate replay state against the
    * wire order ("block N does not match assistant content").
    */
   rawBlocks: ContentBlock[] | undefined
@@ -45,25 +43,27 @@ export interface RawCoTCapture {
 
 /** A fresh capture for one model call. */
 export function createRawCapture(): RawCoTCapture {
-  return { sawReasoning: false, rawShown: false, rawBlocks: undefined, replayState: undefined }
+  return { sawReasoning: false, rawBlocks: undefined, replayState: undefined }
 }
 
 /**
  * Build the replacement assistant message for the model-visible surface: the
  * wire-exact upstream content (raw reasoning restored) with the adapter
- * replay state reattached (the streamed rewrite had to drop it because the
+ * replay state reattached (the streamed rewrite dropped it because the
  * assembled content no longer matched it).
  *
- * @param message - the landed (summary) assistant message from the loop.
+ * @param message - the landed assistant message from the loop.
  * @param capture - raw facts recorded during the same model stream.
- * @returns the restored message, or undefined when nothing needs restoring
- *   (no reasoning, verbatim pass-through, or the text already matches).
+ * @returns the restored message, or undefined when nothing needs restoring:
+ *   no reasoning, or the landed content already equals the wire assembly
+ *   AND already carries the captured replay state (a genuinely untouched
+ *   stream — the transform forwards those finishes verbatim).
  */
 export function restoreRawAssistantMessage(
   message: AssistantMessage,
   capture: RawCoTCapture,
 ): AssistantMessage | undefined {
-  if (!capture.sawReasoning || capture.rawShown) return undefined
+  if (!capture.sawReasoning) return undefined
   const rawBlocks = capture.rawBlocks
   if (rawBlocks === undefined) return undefined
   const rawReasoning = rawBlocks
@@ -72,11 +72,12 @@ export function restoreRawAssistantMessage(
     .join('')
   if (rawReasoning === '') return undefined
   if (message.source.kind !== 'model') return undefined
-  const landedReasoning = message.content
-    .filter((block): block is Extract<ContentBlock, { type: 'reasoning' }> => block.type === 'reasoning')
-    .map((block) => block.text)
-    .join('')
-  if (landedReasoning === rawReasoning) return undefined
+  const contentEqual = JSON.stringify(message.content) === JSON.stringify(rawBlocks)
+  // A touched stream never carries the finish replay state, so even a
+  // wire-identical emission (a non-interleaved verbatim pass-through) needs
+  // the replacement to put the captured state back on the surface.
+  const stateMissing = capture.replayState !== undefined && message.source.replayState === undefined
+  if (contentEqual && !stateMissing) return undefined
   return createAssistantMessage({
     content: rawBlocks,
     source: {
