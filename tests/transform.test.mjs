@@ -243,7 +243,7 @@ async function testMultiReasoningBlocks() {
 async function testStyleAndLanguageComposition() {
   const forced = resolveConfig({ language: '中文', style: 'descriptive' })
   assert.ok(forced.systemPrompt.includes('Write the ENTIRE summary in 中文.'), 'language override appends to the system prompt')
-  assert.ok(forced.systemPrompt.includes('title on its own line'), 'style preset appends to the system prompt')
+  assert.ok(forced.systemPrompt.includes('每个描述文本后，应当追加一个换行'), 'style preset appends to the system prompt')
 
   const custom = resolveConfig({ style: 'custom', customStyle: '用打油诗的风格总结' })
   assert.ok(custom.systemPrompt.includes('用打油诗的风格总结'), 'custom style prompt appends verbatim')
