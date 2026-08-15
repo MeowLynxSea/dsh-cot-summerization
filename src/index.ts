@@ -102,7 +102,7 @@ function dedupeSentences(result: string, emitted: string): string {
   const kept: string[] = []
   for (const part of splitSentences(result)) {
     const norm = normalizeSentence(part)
-    if (norm.length < 8 || !existing.some((s) => sentenceSimilarity(s, norm) >= 0.8)) {
+    if (norm.length < 8 || !existing.some((s) => sentenceSimilarity(s, norm) >= 0.7)) {
       kept.push(part)
     }
   }
