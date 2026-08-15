@@ -15,7 +15,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     }
 }
 declare const en: Record<string, string>;
-/** Required services: the slot registry and the locale seat. */
+/** Required services: the slot registry, the locale seat, and the settings transport. */
 export declare const inject: string[];
 /** Browser plugin entry: register the settings page for the cot-summarizer namespace. */
 export declare function apply(ctx: ClientContext): void;

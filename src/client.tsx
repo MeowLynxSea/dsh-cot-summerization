@@ -243,8 +243,8 @@ const STYLES = `
 .dshc-saved { color: var(--ds-accent, #4f7cff); font-size: 11px; }
 `
 
-/** Required services: the slot registry and the locale seat. */
-export const inject = ['slots', 'locale']
+/** Required services: the slot registry, the locale seat, and the settings transport. */
+export const inject = ['slots', 'locale', 'settingsScope']
 
 /** Browser plugin entry: register the settings page for the cot-summarizer namespace. */
 export function apply(ctx: ClientContext): void {
