@@ -51,6 +51,18 @@ export interface CotSummarizerConfig {
   timeoutMs?: number
   /** Behavior when the summarizer call fails: hide the reasoning or pass it through. */
   onError?: 'hide' | 'pass-through'
+  /**
+   * Summarize progressively while the raw chain of thought streams (near-realtime),
+   * instead of one summary after the stream ends.
+   */
+  incremental?: boolean
+  /**
+   * Raw reasoning characters accumulated before each partial summary call.
+   * Splits prefer sentence boundaries, so the growing summary reads smoothly.
+   */
+  chunkChars?: number
+  /** Maximum time between partial summary calls while the stream is slow. */
+  chunkIntervalMs?: number
 }
 
 /** Configuration schema with documented defaults. */
@@ -64,6 +76,9 @@ export const Config: Schema<CotSummarizerConfig> = z.object({
   maxSummaryChars: z.number().default(800),
   timeoutMs: z.number().default(30000),
   onError: z.union(['hide', 'pass-through'] as const).default('hide'),
+  incremental: z.boolean().default(true),
+  chunkChars: z.number().default(300),
+  chunkIntervalMs: z.number().default(6000),
 })
 
 /** Configuration after static validation, with every default materialized. */
@@ -77,6 +92,9 @@ export interface ResolvedCotSummarizerConfig {
   maxSummaryChars: number
   timeoutMs: number
   onError: 'hide' | 'pass-through'
+  incremental: boolean
+  chunkChars: number
+  chunkIntervalMs: number
 }
 
 /**
@@ -92,10 +110,17 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
   const maxSummaryChars = config.maxSummaryChars ?? 800
   const timeoutMs = config.timeoutMs ?? 30000
   const onError = config.onError ?? 'hide'
+  const incremental = config.incremental ?? true
+  const chunkChars = config.chunkChars ?? 300
+  const chunkIntervalMs = config.chunkIntervalMs ?? 6000
 
   if (minReasoningChars < 0) throw new Error('cot-summarizer: minReasoningChars must be >= 0')
   if (maxSummaryChars < 1) throw new Error('cot-summarizer: maxSummaryChars must be >= 1')
   if (timeoutMs < 1 || timeoutMs > 600000) throw new Error('cot-summarizer: timeoutMs must be within [1, 600000]')
+  if (chunkChars < 1) throw new Error('cot-summarizer: chunkChars must be >= 1')
+  if (chunkIntervalMs < 500 || chunkIntervalMs > 600000) {
+    throw new Error('cot-summarizer: chunkIntervalMs must be within [500, 600000]')
+  }
 
   const baseUrl = (config.baseUrl ?? DEFAULT_BASE_URL).trim().replace(/\/+$/, '')
   if (baseUrl === '') throw new Error('cot-summarizer: baseUrl must not be empty')
@@ -111,5 +136,8 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
     maxSummaryChars,
     timeoutMs,
     onError,
+    incremental,
+    chunkChars,
+    chunkIntervalMs,
   }
 }

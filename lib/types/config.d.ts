@@ -40,6 +40,18 @@ export interface CotSummarizerConfig {
     timeoutMs?: number;
     /** Behavior when the summarizer call fails: hide the reasoning or pass it through. */
     onError?: 'hide' | 'pass-through';
+    /**
+     * Summarize progressively while the raw chain of thought streams (near-realtime),
+     * instead of one summary after the stream ends.
+     */
+    incremental?: boolean;
+    /**
+     * Raw reasoning characters accumulated before each partial summary call.
+     * Splits prefer sentence boundaries, so the growing summary reads smoothly.
+     */
+    chunkChars?: number;
+    /** Maximum time between partial summary calls while the stream is slow. */
+    chunkIntervalMs?: number;
 }
 /** Configuration schema with documented defaults. */
 export declare const Config: Schema<CotSummarizerConfig>;
@@ -54,6 +66,9 @@ export interface ResolvedCotSummarizerConfig {
     maxSummaryChars: number;
     timeoutMs: number;
     onError: 'hide' | 'pass-through';
+    incremental: boolean;
+    chunkChars: number;
+    chunkIntervalMs: number;
 }
 /**
  * Validate and normalize a config object (partial inputs receive the same

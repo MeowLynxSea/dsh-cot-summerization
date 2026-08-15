@@ -1,6 +1,6 @@
 {
   "name": "dsh-cot-summerization",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "DeepSeek Harness plugin: hide the raw chain of thought and show a summarized chain of thought produced by a small model (any Chat Completions-compatible API).",
   "keywords": [
     "deepseek",

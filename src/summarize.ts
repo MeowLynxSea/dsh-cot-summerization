@@ -15,6 +15,31 @@ export class SummarizeError extends Error {
   }
 }
 
+/** Options for one summarizer call beyond the raw text itself. */
+export interface SummarizeOptions {
+  /**
+   * Previous partial summary of the same raw chain of thought. When present,
+   * the summarizer must reproduce it verbatim as the start of its output and
+   * only extend it, so the replacement block grows smoothly instead of
+   * jumping between partial calls.
+   */
+  previousSummary?: string
+}
+
+/**
+ * Instruction appended when a previous partial summary exists: the model
+ * re-summarizes the complete raw text seen so far, keeping its previous
+ * output verbatim as the prefix and extending it with the new reasoning.
+ */
+const INCREMENTAL_INSTRUCTION = `The raw reasoning below is still streaming, so it now contains MORE content than the previous partial summary you produced for it. That previous summary is quoted at the end.
+
+Produce the COMPLETE updated summary of ALL the raw reasoning below:
+1. Begin your output with the previous partial summary EXACTLY as quoted — every character identical, no rephrasing, no omission, no extra line before it.
+2. Continue seamlessly with the summary of the newly arrived reasoning.
+3. If the combined text would exceed the length limit, keep the previous part verbatim and compress only the newly added part.
+
+Output ONLY the updated summary text.`
+
 /**
  * Normalize a configured base URL into the endpoint used for POST
  * `/chat/completions`. Accepts bases with or without a trailing path.
@@ -53,12 +78,14 @@ function extractContent(data: unknown): string {
  * @param cfg - resolved plugin configuration.
  * @param callerSignal - cancellation from the model call being transformed;
  *   combined with the configured timeout.
+ * @param options - incremental-extension context for partial summaries.
  * @returns the summarizer's reply, trimmed.
  */
 export async function summarizeCoT(
   raw: string,
   cfg: ResolvedCotSummarizerConfig,
   callerSignal?: AbortSignal,
+  options?: SummarizeOptions,
 ): Promise<string> {
   if (cfg.model === '') throw new SummarizeError('summarizer model is not configured')
   const url = chatCompletionsUrl(cfg.baseUrl)
@@ -69,6 +96,10 @@ export async function summarizeCoT(
     ? AbortSignal.any([callerSignal, AbortSignal.timeout(cfg.timeoutMs)])
     : AbortSignal.timeout(cfg.timeoutMs)
 
+  const userContent = options?.previousSummary === undefined
+    ? raw
+    : `${INCREMENTAL_INSTRUCTION}\n\nRaw reasoning so far:\n\n${raw}\n\nPrevious partial summary:\n\n${options.previousSummary}`
+
   let response: Response
   try {
     response = await fetch(url, {
@@ -78,7 +109,7 @@ export async function summarizeCoT(
         model: cfg.model,
         messages: [
           { role: 'system', content: cfg.systemPrompt },
-          { role: 'user', content: raw },
+          { role: 'user', content: userContent },
         ],
         temperature: 0.3,
       }),

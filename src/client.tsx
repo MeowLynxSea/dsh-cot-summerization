@@ -32,7 +32,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const en: Record<string, string> = {
   nav: 'CoT Summary',
   settingsTitle: 'Chain-of-Thought Summarization',
-  settingsIntro: 'Hide the model\'s raw chain of thought and show a small-model summary instead. The raw reasoning never reaches the session log or the UI.',
+  settingsIntro: 'Hide the model\'s raw chain of thought and stream a small-model summary in its place. The raw reasoning never reaches the session log or the UI.',
   enabled: 'Enabled',
   baseUrl: 'Base URL',
   baseUrlHint: 'Any Chat Completions-compatible endpoint.',
@@ -48,6 +48,12 @@ const en: Record<string, string> = {
   minReasoningCharsHint: 'Raw reasoning shorter than this (in characters) is shown verbatim without an API call.',
   maxSummaryChars: 'Summary length cap',
   maxSummaryCharsHint: 'Target maximum length of the summary, in characters.',
+  incremental: 'Streaming summaries',
+  incrementalHint: 'Summarize progressively while the raw chain of thought streams (near-realtime), instead of once at the end.',
+  chunkChars: 'Chunk size (chars)',
+  chunkCharsHint: 'Raw reasoning characters accumulated before each partial summary; splits prefer sentence boundaries so the summary grows smoothly.',
+  chunkIntervalMs: 'Chunk interval (ms)',
+  chunkIntervalMsHint: 'Maximum time between partial summaries on slow streams.',
   timeoutMs: 'Request timeout (ms)',
   onError: 'On summarizer failure',
   onErrorHide: 'Hide reasoning',
@@ -63,7 +69,7 @@ const en: Record<string, string> = {
 const zh: Record<string, string> = {
   nav: '思维链总结',
   settingsTitle: '思维链总结（CoT Summarization）',
-  settingsIntro: '隐藏模型的原始思维链，改为展示小模型生成的摘要。原始推理不会进入会话日志或界面。',
+  settingsIntro: '隐藏模型的原始思维链，改为流式展示小模型生成的摘要。原始推理不会进入会话日志或界面。',
   enabled: '启用',
   baseUrl: '接口地址',
   baseUrlHint: '任意兼容 Chat Completions 的接口地址。',
@@ -79,6 +85,12 @@ const zh: Record<string, string> = {
   minReasoningCharsHint: '短于该长度（字符数）的原始思维链直接展示，不调用接口。',
   maxSummaryChars: '摘要长度上限',
   maxSummaryCharsHint: '摘要的目标最大长度（字符数）。',
+  incremental: '流式分批总结',
+  incrementalHint: '思维链流式输出过程中分批调用总结（接近实时），而不是结束后一次性总结。',
+  chunkChars: '分块大小（字符）',
+  chunkCharsHint: '每累积多少字符的原始推理触发一次阶段性总结；切分优先选择句子边界，摘要会平滑增长。',
+  chunkIntervalMs: '分块间隔（毫秒）',
+  chunkIntervalMsHint: '流式较慢时，两次阶段性总结之间的最大时间间隔。',
   timeoutMs: '请求超时（毫秒）',
   onError: '总结失败时',
   onErrorHide: '隐藏思维链',
@@ -211,6 +223,13 @@ function SettingsSection({ t }: SettingsSectionProps) {
             onChange={(event) => { set('enabled', event.target.checked) }}
           />
         </Field>
+        <Field label={t('incremental')} hint={t('incrementalHint')}>
+          <input
+            type="checkbox"
+            checked={draft.incremental ?? true}
+            onChange={(event) => { set('incremental', event.target.checked) }}
+          />
+        </Field>
         <Field label={t('baseUrl')} hint={t('baseUrlHint')}>
           <input
             type="text"
@@ -259,6 +278,28 @@ function SettingsSection({ t }: SettingsSectionProps) {
             onChange={(event) => {
               const parsed = Number(event.target.value)
               if (Number.isFinite(parsed)) set('maxSummaryChars', parsed)
+            }}
+          />
+        </Field>
+        <Field label={t('chunkChars')} hint={t('chunkCharsHint')}>
+          <input
+            type="number"
+            min={1}
+            value={draft.chunkChars ?? 300}
+            onChange={(event) => {
+              const parsed = Number(event.target.value)
+              if (Number.isFinite(parsed)) set('chunkChars', parsed)
+            }}
+          />
+        </Field>
+        <Field label={t('chunkIntervalMs')} hint={t('chunkIntervalMsHint')}>
+          <input
+            type="number"
+            min={500}
+            value={draft.chunkIntervalMs ?? 6000}
+            onChange={(event) => {
+              const parsed = Number(event.target.value)
+              if (Number.isFinite(parsed)) set('chunkIntervalMs', parsed)
             }}
           />
         </Field>

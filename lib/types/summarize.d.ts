@@ -9,6 +9,16 @@ import type { ResolvedCotSummarizerConfig } from './config.ts';
 export declare class SummarizeError extends Error {
     constructor(message: string);
 }
+/** Options for one summarizer call beyond the raw text itself. */
+export interface SummarizeOptions {
+    /**
+     * Previous partial summary of the same raw chain of thought. When present,
+     * the summarizer must reproduce it verbatim as the start of its output and
+     * only extend it, so the replacement block grows smoothly instead of
+     * jumping between partial calls.
+     */
+    previousSummary?: string;
+}
 /**
  * Normalize a configured base URL into the endpoint used for POST
  * `/chat/completions`. Accepts bases with or without a trailing path.
@@ -24,6 +34,7 @@ export declare function chatCompletionsUrl(baseUrl: string): string;
  * @param cfg - resolved plugin configuration.
  * @param callerSignal - cancellation from the model call being transformed;
  *   combined with the configured timeout.
+ * @param options - incremental-extension context for partial summaries.
  * @returns the summarizer's reply, trimmed.
  */
-export declare function summarizeCoT(raw: string, cfg: ResolvedCotSummarizerConfig, callerSignal?: AbortSignal): Promise<string>;
+export declare function summarizeCoT(raw: string, cfg: ResolvedCotSummarizerConfig, callerSignal?: AbortSignal, options?: SummarizeOptions): Promise<string>;
