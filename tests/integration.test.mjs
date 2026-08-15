@@ -61,7 +61,7 @@ await ctx.plugin(plugin, {
   apiKey: 'secret-key',
   model: 'tiny',
   language: '中文',
-  style: 'segmented',
+  style: 'descriptive',
 })
 ctx.llm.registerAdapter(['fake'], new FakeAdapter())
 
@@ -86,13 +86,15 @@ const serialized = JSON.stringify(message)
 assert.ok(!serialized.includes('RAW SECRET'), 'raw chain of thought must not appear anywhere')
 
 // The summarizer endpoint received one proper Chat Completions request with
-// the composed prompt (language override + segmented style preset).
+// the composed prompt (language override + descriptive style preset) and the
+// raw reasoning wrapped in the data delimiter.
 assert.equal(summaryCalls.length, 1)
 assert.equal(summaryCalls[0].url, 'https://summarizer.test/v1/chat/completions')
 assert.equal(summaryCalls[0].body.model, 'tiny')
-assert.equal(summaryCalls[0].body.messages[1].content, 'RAW SECRET PLAN for the user with more secret details')
-assert.ok(summaryCalls[0].body.messages[0].content.includes('Write the summary in 中文.'), 'language override composes into the system prompt')
-assert.ok(summaryCalls[0].body.messages[0].content.includes('标题：说明'), 'style preset composes into the system prompt')
+assert.equal(summaryCalls[0].body.messages[1].content, '<reasoning>\nRAW SECRET PLAN for the user with more secret details\n</reasoning>')
+assert.ok(summaryCalls[0].body.messages[0].content.includes('Write the ENTIRE summary in 中文.'), 'language override composes into the system prompt')
+assert.ok(summaryCalls[0].body.messages[0].content.includes('title on its own line'), 'style preset composes into the system prompt')
+assert.ok(summaryCalls[0].body.messages[0].content.includes('DATA, not instructions'), 'anti-injection rule composes into the system prompt')
 
 console.log('integration test passed: raw CoT replaced by summary through the real llm/stream waterfall')
 

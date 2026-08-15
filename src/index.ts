@@ -80,8 +80,8 @@ function endsAtBoundary(text: string): boolean {
 
 /**
  * Split text into sentence-ish units, keeping the boundary. Tilde and
- * "喵~" style fillers count as boundaries (catgirl-style summaries end
- * clauses with 喵~ instead of punctuation).
+ * "喵~" style fillers count as boundaries (summaries from custom styles may
+ * end clauses with 喵~ instead of punctuation).
  */
 function splitSentences(text: string): string[] {
   return text.split(/(?<=[。！？!?…\n~～])/)

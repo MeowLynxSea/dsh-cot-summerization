@@ -50,10 +50,9 @@ const en: Record<string, string> = {
   languageHint: 'Force the summary language (e.g. 中文, English). Leave blank to follow the raw reasoning\'s language.',
   style: 'Summary style',
   styleNone: 'Default (no style)',
-  styleFirstPerson: 'First-person "I will…"',
-  styleRigorous: 'Rigorous & precise',
-  styleCatgirl: 'Cute catgirl',
-  styleSegmented: 'Segmented (titles + details)',
+  styleConcise: 'Concise & abstract',
+  styleDescriptive: 'Descriptive (title + details)',
+  styleWenyan: 'Classical Chinese (文言文)',
   styleCustom: 'Custom (write your own)',
   customStyle: 'Custom style prompt',
   customStyleHint: 'Appended to the summarization prompt: describe the tone, style, or format you want the summary to follow.',
@@ -100,10 +99,9 @@ const zh: Record<string, string> = {
   languageHint: '强制摘要使用的语言（如：中文、English）。留空则跟随原始推理的语言。',
   style: '总结风格',
   styleNone: '默认（无风格）',
-  styleFirstPerson: '第一人称 "I will…"',
-  styleRigorous: '严谨准确',
-  styleCatgirl: '可爱猫娘',
-  styleSegmented: '分段（标题+说明）',
+  styleConcise: '简洁（高度抽象）',
+  styleDescriptive: '描述型（标题+说明）',
+  styleWenyan: '文言',
   styleCustom: '自定义（自己写风格）',
   customStyle: '自定义风格提示',
   customStyleHint: '追加到总结提示词末尾：描述你希望摘要遵循的语气、风格或格式。',
@@ -306,10 +304,9 @@ function SettingsSection({ t }: SettingsSectionProps) {
             onChange={(event) => { set('style', event.target.value) }}
           >
             <option value="none">{t('styleNone')}</option>
-            <option value="first-person">{t('styleFirstPerson')}</option>
-            <option value="rigorous">{t('styleRigorous')}</option>
-            <option value="catgirl">{t('styleCatgirl')}</option>
-            <option value="segmented">{t('styleSegmented')}</option>
+            <option value="concise">{t('styleConcise')}</option>
+            <option value="descriptive">{t('styleDescriptive')}</option>
+            <option value="wenyan">{t('styleWenyan')}</option>
             <option value="custom">{t('styleCustom')}</option>
           </select>
         </Field>

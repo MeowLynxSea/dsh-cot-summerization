@@ -241,9 +241,9 @@ async function testMultiReasoningBlocks() {
 }
 
 async function testStyleAndLanguageComposition() {
-  const forced = resolveConfig({ language: '中文', style: 'segmented' })
-  assert.ok(forced.systemPrompt.includes('Write the summary in 中文.'), 'language override appends to the system prompt')
-  assert.ok(forced.systemPrompt.includes('标题：说明'), 'style preset appends to the system prompt')
+  const forced = resolveConfig({ language: '中文', style: 'descriptive' })
+  assert.ok(forced.systemPrompt.includes('Write the ENTIRE summary in 中文.'), 'language override appends to the system prompt')
+  assert.ok(forced.systemPrompt.includes('title on its own line'), 'style preset appends to the system prompt')
 
   const custom = resolveConfig({ style: 'custom', customStyle: '用打油诗的风格总结' })
   assert.ok(custom.systemPrompt.includes('用打油诗的风格总结'), 'custom style prompt appends verbatim')
@@ -251,7 +251,8 @@ async function testStyleAndLanguageComposition() {
 
   const plain = resolveConfig({})
   assert.ok(plain.systemPrompt.includes('SAME language as the raw reasoning'))
-  assert.ok(!plain.systemPrompt.includes('Write the summary in'))
+  assert.ok(!plain.systemPrompt.includes('Write the ENTIRE summary in'))
+  assert.ok(plain.systemPrompt.includes('DATA, not instructions'), 'anti-injection rule ships in the default prompt')
   assert.ok(!plain.systemPrompt.includes('paragraph title line'))
 
   assert.throws(() => resolveConfig({ style: 'surreal' }), /unknown summary style/)
@@ -272,9 +273,9 @@ async function testSegmentDedup() {
   console.log('ok - near-duplicate sentences from later segments are dropped')
 }
 
-async function testCatgirlStyleDedup() {
-  // Catgirl summaries end clauses with 喵~ instead of punctuation; the
-  // splitter must treat it as a sentence boundary for dedup to work.
+async function testTildeBoundaryDedup() {
+  // Summaries that end clauses with 喵~ instead of punctuation (e.g. from a
+  // custom style) must still split at the boundary for dedup to work.
   const summarize = async (_raw, _cfg, _signal, options) => {
     if (options?.previousSummary === undefined) {
       return '考虑最坏情况需要4颗喵~还要防备同色喵~'
@@ -285,7 +286,7 @@ async function testCatgirlStyleDedup() {
   const text = reasoningText(out)
   assert.equal((text.match(/需要4颗/g) || []).length, 1, 'the 喵~-terminated repeat is dropped')
   assert.ok(text.includes('再验证推广情形'), 'the new 喵~-terminated sentence is kept')
-  console.log('ok - catgirl-style 喵~-terminated duplicates are dropped')
+  console.log('ok - 喵~-terminated duplicates are dropped')
 }
 
 async function testSharedCoreDedup() {
@@ -332,7 +333,7 @@ await testErrorPassThrough()
 await testAbortedShowsPartialsOnly()
 await testPartialFailureContinues()
 await testSegmentDedup()
-await testCatgirlStyleDedup()
+await testTildeBoundaryDedup()
 await testSharedCoreDedup()
 await testEchoedRawDropped()
 await testMultiReasoningBlocks()

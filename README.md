@@ -48,7 +48,7 @@
 | **夏日渐进蒸馏** | 流式分段摘要:每凑满 `chunkChars`(300 字)或 `chunkIntervalMs`(4 秒)触发一次,切分点优先落在句边界。 |
 | **BioGram™ 重叠度量** | bigram Dice 系数,阈值 0.65。该阈值经历了 0.8 → 0.7 → 0.65 的科学调参过程。 |
 | **连续核心追踪引擎** | 最长公共子串,滚动数组实现,O(n·m),零依赖。用来逮住换了前缀、核心没变的复述。 |
-| **Nekomimi™ 边界协议** | 把「喵~」识别为句尾;计算相似度前先剥掉 `喵 / ~ / 〜 / ～`。是的,`style: catgirl` 是真实配置项。 |
+| **Nekomimi™ 边界协议** | 把「喵~」识别为句尾;计算相似度前先剥掉 `喵 / ~ / 〜 / ～`。无论摘要出自哪种风格,以「喵~」结尾的子句都会被正确切分。 |
 | **原子化浪费** | `AbortSignal.any(caller, timeout)`:主调用一旦取消,摘要调用立即陪葬。我们连浪费都是原子性的。 |
 
 另外,短思维链(小于 `minReasoningChars`,默认 32 字)直接原文放行——**为 32 个字发一次 API 请求,连我们都觉得过了。**
@@ -83,7 +83,7 @@
 
 ## 🧬 先进算法:Nekomimi Boundary Protocol™
 
-当摘要模型以猫娘语气工作(`style: catgirl`),子句以「喵~」结束而非标点。传统 NLP 管线在此全面崩溃;我们没有。经过归一化的去重比对让 0.65 阈值对猫娘同样有效——重复的结论哪怕换了三遍「喵~」的写法,也逃不出滚动数组的掌心。
+当摘要文本(例如来自 `customStyle` 的任意风格)以「喵~」结束子句而非标点时,传统 NLP 管线在此全面崩溃;我们没有。经过归一化的去重比对让 0.65 阈值对猫娘同样有效——重复的结论哪怕换了三遍「喵~」的写法,也逃不出滚动数组的掌心。
 
 <div align="center">
 <img src="assets/nekomimi.svg" width="880" alt="喵容性边界协议示意图:猫娘语流的句子边界自动检测与归一化比对">
@@ -117,7 +117,7 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 | `model` | `deepseek-chat` | 改写员型号 |
 | `systemPrompt` | 内置 | 自定义提示词,支持 `{maxSummaryChars}` 占位符 |
 | `language` | `""` | 强制摘要语言;留空则跟随原始思维链 |
-| `style` | `none` | `none` / `first-person` / `rigorous` / `catgirl` / `segmented` / `custom` |
+| `style` | `none` | `none` / `concise` / `descriptive` / `wenyan` / `custom` |
 | `customStyle` | `""` | `style: custom` 时的自由文本风格 |
 | `minReasoningChars` | `32` | 短于此长度的思维链原文放行,不值得一次 API |
 | `maxSummaryChars` | `800` | 摘要长度上限 |
@@ -145,7 +145,7 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 
 - [x] v0.3 — 流式分段摘要 + 近重复消除
 - [x] 喵容性边界协议(生产就绪,样本一只)
-- [ ] v0.4 — 摘要语气主题包市场(管家 / 侦探 / 猫娘已部分支持)
+- [ ] v0.4 — 摘要语气主题包市场(管家 / 侦探 / 文言已部分支持)
 - [ ] v1.0 — 摘要²(见图)
 - [ ] v1.1 — 摘要的摘要的摘要
 - [ ] v2.0 — 收敛至单个句号
