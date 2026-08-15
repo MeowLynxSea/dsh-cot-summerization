@@ -188,6 +188,21 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   )
 }
 
+/** Toggle switch styled with the host theme; the native checkbox keeps form semantics. */
+function Switch({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="dshc-switch">
+      <input
+        type="checkbox"
+        role="switch"
+        checked={checked}
+        onChange={(event) => { onChange(event.target.checked) }}
+      />
+      <span className="dshc-switch-track" aria-hidden="true" />
+    </label>
+  )
+}
+
 /** The plugin's settings page, served by the host route. */
 function SettingsSection({ t }: SettingsSectionProps) {
   const [view, setView] = useState<SettingsView>()
@@ -249,31 +264,27 @@ function SettingsSection({ t }: SettingsSectionProps) {
       </div>
       <div className="dshc-grid">
         <Field label={t('enabled')}>
-          <input
-            type="checkbox"
+          <Switch
             checked={draft.enabled ?? true}
-            onChange={(event) => { set('enabled', event.target.checked) }}
+            onChange={(checked) => { set('enabled', checked) }}
           />
         </Field>
         <Field label={t('preserveRawForModel')} hint={t('preserveRawForModelHint')}>
-          <input
-            type="checkbox"
+          <Switch
             checked={draft.preserveRawForModel ?? true}
-            onChange={(event) => { set('preserveRawForModel', event.target.checked) }}
+            onChange={(checked) => { set('preserveRawForModel', checked) }}
           />
         </Field>
         <Field label={t('incremental')} hint={t('incrementalHint')}>
-          <input
-            type="checkbox"
+          <Switch
             checked={draft.incremental ?? true}
-            onChange={(event) => { set('incremental', event.target.checked) }}
+            onChange={(checked) => { set('incremental', checked) }}
           />
         </Field>
         <Field label={t('typewriter')} hint={t('typewriterHint')}>
-          <input
-            type="checkbox"
+          <Switch
             checked={draft.typewriter ?? false}
-            onChange={(event) => { set('typewriter', event.target.checked) }}
+            onChange={(checked) => { set('typewriter', checked) }}
           />
         </Field>
         {draft.typewriter === true && (
@@ -438,7 +449,13 @@ const STYLES = `
 .dshc-field input[type="text"]:focus, .dshc-field input[type="password"]:focus, .dshc-field input[type="number"]:focus, .dshc-field select:focus, .dshc-field textarea:focus {
   outline: none; border-color: var(--dsw-alias-border-l4);
 }
-.dshc-field input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--dsw-alias-brand-primary); }
+.dshc-switch { position: relative; display: inline-flex; width: 38px; height: 22px; cursor: pointer; }
+.dshc-switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.dshc-switch-track { position: absolute; inset: 0; border-radius: 999px; background: var(--dsw-alias-border-l2); transition: background 0.15s ease; }
+.dshc-switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--dsw-alias-label-primary-foreground); box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); transition: transform 0.15s ease; }
+.dshc-switch input:checked + .dshc-switch-track { background: var(--dsw-alias-button-primary-fill); }
+.dshc-switch input:checked + .dshc-switch-track::after { transform: translateX(16px); }
+.dshc-switch input:focus-visible + .dshc-switch-track { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
 .dshc-field-hint { color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 1.4; }
 .dshc-actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
 .dshc-save { padding: 6px 16px; border: 0; border-radius: 6px; background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground); font: inherit; font-size: 13px; cursor: pointer; }
