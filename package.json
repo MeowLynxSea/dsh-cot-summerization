@@ -40,7 +40,7 @@
   "dsh": {
     "category": "extension",
     "displayName": "思维链摘要",
-    "image": "https://raw.githubusercontent.com/MeowLynxSea/dsh-cot-summerization/main/assets/logo.svg",
+    "image": "https://github.com/MeowLynxSea/dsh-cot-summerization/raw/main/assets/hero.svg",
     "bundle": {
       "patch": "./cordis.patch.yml"
     },
