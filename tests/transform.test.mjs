@@ -323,6 +323,44 @@ async function testEchoedRawDropped() {
   console.log('ok - a summary echoing the raw reasoning is dropped')
 }
 
+async function testTypewriterPacesCharacters() {
+  // With the typewriter on, completed segments are emitted one code point at
+  // a time (interval 0 keeps the test instant) and still assemble into the
+  // same message as the whole-segment emission.
+  const config = cfg({ chunkChars: 60, typewriter: true, typewriterIntervalMs: 0 })
+  const { summarize, calls } = segmentMock()
+  const out = await collect(transformCoTStream(streamingUpstream(7), config, summarize))
+  assert.equal(calls.length, 4, 'segments still fire identically under the typewriter')
+  const deltas = out.filter((c) => c.type === 'reasoning-delta')
+  assert.ok(deltas.every((d) => Array.from(d.text).length === 1), 'every delta is exactly one code point')
+  assert.equal(deltas.map((d) => d.text).join(''), '[1][2][3][4]', 'characters join back into the segments')
+  const firstDelta = out.findIndex((c) => c.type === 'reasoning-delta')
+  const firstBlockStart = out.findIndex((c) => c.type === 'block-start' && c.blockType === 'reasoning')
+  assert.ok(firstBlockStart !== -1 && firstBlockStart < firstDelta, 'the block opens before its first character')
+  const lastDelta = out.findLastIndex((c) => c.type === 'reasoning-delta')
+  const blockEnd = out.findIndex((c) => c.type === 'block-end' && c.block.type === 'reasoning')
+  assert.ok(blockEnd > lastDelta, 'the block closes after its last character')
+  assert.equal(out[blockEnd].block.text, '[1][2][3][4]', 'the block-end carries the complete summary')
+  assert.equal(out.at(-1).type, 'finish', 'finish stays terminal')
+  const json = JSON.stringify(out)
+  assert.ok(!json.includes('SECRET'), 'raw chain of thought must not appear in the output')
+  const { blocks } = assemble(out)
+  assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'text'])
+  assert.equal(blocks[0].text, '[1][2][3][4]', 'the assembled message keeps the full summary')
+  console.log('ok - typewriter emits one code point per delta and assembles identically')
+}
+
+async function testTypewriterKeepsCodePointsWhole() {
+  // Surrogate pairs (emoji) must never be split across deltas.
+  const summarize = async () => '思考🙂完毕。Done✅'
+  const out = await collect(transformCoTStream(streamingUpstream(1),
+    cfg({ typewriter: true, typewriterIntervalMs: 0 }), summarize))
+  const deltas = out.filter((c) => c.type === 'reasoning-delta')
+  assert.ok(deltas.every((d) => Array.from(d.text).length === 1), 'surrogate pairs stay whole')
+  assert.equal(deltas.map((d) => d.text).join(''), '思考🙂完毕。Done✅')
+  console.log('ok - typewriter never splits surrogate pairs')
+}
+
 await testStyleAndLanguageComposition()
 await testStreamingPartials()
 await testIncrementalOff()
@@ -337,4 +375,6 @@ await testTildeBoundaryDedup()
 await testSharedCoreDedup()
 await testEchoedRawDropped()
 await testMultiReasoningBlocks()
+await testTypewriterPacesCharacters()
+await testTypewriterKeepsCodePointsWhole()
 console.log('all transform tests passed')

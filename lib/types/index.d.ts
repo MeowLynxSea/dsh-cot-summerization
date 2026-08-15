@@ -10,9 +10,13 @@
  * call summarizes ONLY the newly arrived reasoning segment (the previous summary
  * is passed as continuity context but never needs to be reproduced), so the
  * replacement reasoning block grows reliably as segments land; a final call
- * covers whatever tail remains when the reasoning completes. The Web Client
- * renders the result as the usual "Think" disclosure row. Settings surface
- * in the Web Client settings page under the `cot-summarizer` namespace.
+ * covers whatever tail remains when the reasoning completes. Completed
+ * segments are pushed to the frontend as they land; with `typewriter` on
+ * they are revealed one character at a time instead (the single serial
+ * stream then paces the reply and the landing behind the reveal). The Web
+ * Client renders the result as the usual "Think" disclosure row. Settings
+ * surface in the Web Client settings page under the `cot-summarizer`
+ * namespace.
  *
  * Reasoning models replay their prior reasoning on tool-call turns, so a
  * summarized history would degrade multi-step reasoning. When
@@ -44,7 +48,10 @@ export type SummarizeFn = (raw: string, cfg: ResolvedCotSummarizerConfig, signal
  * The replacement reasoning block reuses the index of the first raw
  * reasoning block, and its content grows segment by segment as partial
  * summaries land — the block-start is emitted with the first partial, so
- * the assembled message keeps the summary above the reply text. The
+ * the assembled message keeps the summary above the reply text. Completed
+ * segments are queued and pushed to the frontend as they land — whole, or
+ * one character per `typewriterIntervalMs` when `typewriter` is on (the
+ * serial stream then paces everything downstream, see `drainQueue`). The
  * transform is index-safe for the session log's `BlockAssembler`: forwarded
  * blocks keep their indices verbatim, and the summary block never collides
  * with them because the raw reasoning index is freed by swallowing.

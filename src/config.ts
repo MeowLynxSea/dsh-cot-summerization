@@ -97,6 +97,16 @@ export interface CotSummarizerConfig {
   chunkChars?: number
   /** Maximum time between partial summary calls while the stream is slow. */
   chunkIntervalMs?: number
+  /**
+   * Emit the summary to the frontend one character at a time (typewriter)
+   * instead of whole completed segments. Off by default: the transform emits
+   * on a single serial stream, so pacing every character delays the reply
+   * text, the finish chunk, and the landed message by roughly
+   * summaryLength × typewriterIntervalMs.
+   */
+  typewriter?: boolean
+  /** Interval between two revealed characters, in milliseconds. 0 means no delay. */
+  typewriterIntervalMs?: number
 }
 
 /** Configuration schema with documented defaults. */
@@ -117,6 +127,8 @@ export const Config: Schema<CotSummarizerConfig> = z.object({
   incremental: z.boolean().default(true),
   chunkChars: z.number().default(300),
   chunkIntervalMs: z.number().default(4000),
+  typewriter: z.boolean().default(false),
+  typewriterIntervalMs: z.number().default(30),
 })
 
 /** Configuration after static validation, with every default materialized. */
@@ -137,6 +149,8 @@ export interface ResolvedCotSummarizerConfig {
   incremental: boolean
   chunkChars: number
   chunkIntervalMs: number
+  typewriter: boolean
+  typewriterIntervalMs: number
 }
 
 /**
@@ -156,6 +170,8 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
   const incremental = config.incremental ?? true
   const chunkChars = config.chunkChars ?? 300
   const chunkIntervalMs = config.chunkIntervalMs ?? 4000
+  const typewriter = config.typewriter ?? false
+  const typewriterIntervalMs = config.typewriterIntervalMs ?? 30
   const language = (config.language ?? '').trim()
   const style = config.style ?? 'none'
   const customStyle = (config.customStyle ?? '').trim()
@@ -166,6 +182,9 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
   if (chunkChars < 1) throw new Error('cot-summarizer: chunkChars must be >= 1')
   if (chunkIntervalMs < 500 || chunkIntervalMs > 600000) {
     throw new Error('cot-summarizer: chunkIntervalMs must be within [500, 600000]')
+  }
+  if (typewriterIntervalMs < 0 || typewriterIntervalMs > 2000) {
+    throw new Error('cot-summarizer: typewriterIntervalMs must be within [0, 2000]')
   }
   if (!SUMMARY_STYLES.includes(style)) {
     throw new Error(`cot-summarizer: unknown summary style "${String(style)}"`)
@@ -201,5 +220,7 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
     incremental,
     chunkChars,
     chunkIntervalMs,
+    typewriter,
+    typewriterIntervalMs,
   }
 }

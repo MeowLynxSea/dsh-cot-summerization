@@ -10,9 +10,13 @@
  * call summarizes ONLY the newly arrived reasoning segment (the previous summary
  * is passed as continuity context but never needs to be reproduced), so the
  * replacement reasoning block grows reliably as segments land; a final call
- * covers whatever tail remains when the reasoning completes. The Web Client
- * renders the result as the usual "Think" disclosure row. Settings surface
- * in the Web Client settings page under the `cot-summarizer` namespace.
+ * covers whatever tail remains when the reasoning completes. Completed
+ * segments are pushed to the frontend as they land; with `typewriter` on
+ * they are revealed one character at a time instead (the single serial
+ * stream then paces the reply and the landing behind the reveal). The Web
+ * Client renders the result as the usual "Think" disclosure row. Settings
+ * surface in the Web Client settings page under the `cot-summarizer`
+ * namespace.
  *
  * Reasoning models replay their prior reasoning on tool-call turns, so a
  * summarized history would degrade multi-step reasoning. When
@@ -159,6 +163,56 @@ function dedupeSentences(result: string, emitted: string): string {
   return kept.join('')
 }
 
+/** Wait `ms` milliseconds; the pacing delay of the optional typewriter. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Atomic character queue for typewriter emission. Completed summary segments
+ * are appended whole; the emitter pops one code point at a time from the head
+ * (`for...of` iterates by code point, so surrogate pairs — emoji — stay
+ * whole). Push and pop are only ever invoked from the single transform
+ * generator thread, so the operations cannot interleave and need no locking.
+ */
+class CharQueue {
+  private chars: string[] = []
+  private head = 0
+
+  get empty(): boolean {
+    return this.head >= this.chars.length
+  }
+
+  /** Append a whole segment to the tail. */
+  push(segment: string): void {
+    if (segment === '') return
+    // Compact once the consumed prefix grows: keeps memory bounded to the
+    // un-emitted text plus one segment.
+    if (this.head > 4096) {
+      this.chars = this.chars.slice(this.head)
+      this.head = 0
+    }
+    for (const char of segment) this.chars.push(char)
+  }
+
+  /** Pop the first un-emitted code point, or undefined when empty. */
+  pop(): string | undefined {
+    if (this.empty) return undefined
+    const char = this.chars[this.head]
+    this.head += 1
+    return char
+  }
+
+  /** Pop the whole remaining content as one string (non-typewriter mode). */
+  drainAll(): string {
+    if (this.empty) return ''
+    const text = this.chars.slice(this.head).join('')
+    this.chars = []
+    this.head = 0
+    return text
+  }
+}
+
 /**
  * Wrap one model stream: swallow every reasoning chunk, stream everything
  * else untouched, and emit the summarized reasoning in place of the raw
@@ -167,7 +221,10 @@ function dedupeSentences(result: string, emitted: string): string {
  * The replacement reasoning block reuses the index of the first raw
  * reasoning block, and its content grows segment by segment as partial
  * summaries land — the block-start is emitted with the first partial, so
- * the assembled message keeps the summary above the reply text. The
+ * the assembled message keeps the summary above the reply text. Completed
+ * segments are queued and pushed to the frontend as they land — whole, or
+ * one character per `typewriterIntervalMs` when `typewriter` is on (the
+ * serial stream then paces everything downstream, see `drainQueue`). The
  * transform is index-safe for the session log's `BlockAssembler`: forwarded
  * blocks keep their indices verbatim, and the summary block never collides
  * with them because the raw reasoning index is freed by swallowing.
@@ -199,6 +256,8 @@ export async function* transformCoTStream(
   let summaryClosed = false
   let rawShown = false
   let emitted = ''
+  /** Completed segments awaiting emission; drained whole or per character. */
+  const queue = new CharQueue()
   /** Raw length already handed to a summarizer call; the next segment starts here. */
   let lastSegmentStart = 0
   let lastTriggerAt = Date.now()
@@ -242,14 +301,51 @@ export async function* transformCoTStream(
       })
   }
 
-  /** Emit a text tail into the replacement reasoning block, opening it lazily. */
-  function* emitTail(tail: string): Generator<StreamChunk> {
-    if (!summaryStarted) {
-      summaryStarted = true
-      yield { type: 'block-start', index: blockIndex(), blockType: 'reasoning' }
-    }
+  /**
+   * Append a text tail to the replacement reasoning block. The text lands in
+   * the queue and in `emitted` (dedup continuity and the block-end payload use
+   * the full string) but is pushed to the frontend only by {@link drainQueue}.
+   */
+  function enqueue(tail: string): void {
+    if (tail === '') return
     emitted += tail
-    yield { type: 'reasoning-delta', index: blockIndex(), text: tail }
+    queue.push(tail)
+  }
+
+  /**
+   * Push the queued summary text to the frontend. With the typewriter off, the
+   * whole queued content goes out as a single `reasoning-delta` (identical to
+   * the pre-typewriter emission); with it on, one code point per
+   * `typewriterIntervalMs` so the Think row reveals the summary character by
+   * character. The block opens lazily with its first character. Because the
+   * transform yields on a single serial stream, pacing blocks the reply text,
+   * the finish chunk, and the landed message behind the reveal — the
+   * documented trade-off of the typewriter.
+   */
+  async function* drainQueue(): AsyncGenerator<StreamChunk> {
+    if (queue.empty) return
+    if (!cfg.typewriter) {
+      if (!summaryStarted) {
+        summaryStarted = true
+        yield { type: 'block-start', index: blockIndex(), blockType: 'reasoning' }
+      }
+      const text = queue.drainAll()
+      yield { type: 'reasoning-delta', index: blockIndex(), text }
+      return
+    }
+    while (!queue.empty) {
+      // An aborted call is being torn down; the consumer stops pulling right
+      // after the next chunk, so stop emitting rather than pace the tail.
+      if (callerSignal?.aborted === true) return
+      const char = queue.pop()
+      if (char === undefined) return
+      if (!summaryStarted) {
+        summaryStarted = true
+        yield { type: 'block-start', index: blockIndex(), blockType: 'reasoning' }
+      }
+      if (cfg.typewriterIntervalMs > 0) await sleep(cfg.typewriterIntervalMs)
+      yield { type: 'reasoning-delta', index: blockIndex(), text: char }
+    }
   }
 
   /** Show the raw reasoning verbatim in its own Think row (short input / pass-through). */
@@ -264,12 +360,13 @@ export async function* transformCoTStream(
 
   /**
    * Fold the in-flight call's result into the stream: each segment summary
-   * is appended as-is (segments never depend on each other, so a rewritten
-   * or failed segment cannot stall the stream), with sentences that repeat
-   * the already-emitted summary dropped. Blocks only while the call is still
-   * running (callers invoke it after the call settled, or at the terminal
-   * finish where blocking is unavoidable). Failures are logged and skipped;
-   * the end-of-stream fallback policy lives in the finish handler.
+   * is appended to the emission queue (segments never depend on each other,
+   * so a rewritten or failed segment cannot stall the stream), with
+   * sentences that repeat the already-emitted summary dropped. Blocks only
+   * while the call is still running (callers invoke it after the call
+   * settled, or at the terminal finish where blocking is unavoidable).
+   * Failures are logged and skipped; the end-of-stream fallback policy
+   * lives in the finish handler.
    */
   async function* foldPending(): AsyncGenerator<StreamChunk> {
     if (pending === undefined) return
@@ -294,7 +391,7 @@ export async function* transformCoTStream(
       }
     }
     const deduped = dedupeSentences(result, emitted)
-    if (deduped !== '') yield* emitTail(deduped)
+    if (deduped !== '') enqueue(deduped)
   }
 
   /** Decide whether another segment call is due, given the raw text just grew. */
@@ -326,6 +423,11 @@ export async function* transformCoTStream(
       // tail is handed to the next call now that the slot is free.
       if (reasoningDone && pending === undefined && hasUnsummarizedTail()) fire()
     }
+    // Completed segments go out here — whole (typewriter off) or one code
+    // point per interval (typewriter on). Queued text always precedes the
+    // current upstream chunk, so the summary block keeps opening before the
+    // reply.
+    yield* drainQueue()
     switch (chunk.type) {
       case 'block-start': {
         if (chunk.blockType === 'reasoning') {
@@ -398,9 +500,13 @@ export async function* transformCoTStream(
             if (cfg.onError === 'pass-through') {
               yield* emitRawReasoning(trimmed)
             } else {
-              yield* emitTail(UNAVAILABLE_PLACEHOLDER)
+              enqueue(UNAVAILABLE_PLACEHOLDER)
             }
           }
+          // The queue must be empty before the block closes: with the
+          // typewriter on this paces the reveal here and therefore delays the
+          // finish chunk (and the landed message) — the documented trade-off.
+          yield* drainQueue()
         }
         if (summaryStarted && !summaryClosed) {
           summaryClosed = true

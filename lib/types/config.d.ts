@@ -78,6 +78,16 @@ export interface CotSummarizerConfig {
     chunkChars?: number;
     /** Maximum time between partial summary calls while the stream is slow. */
     chunkIntervalMs?: number;
+    /**
+     * Emit the summary to the frontend one character at a time (typewriter)
+     * instead of whole completed segments. Off by default: the transform emits
+     * on a single serial stream, so pacing every character delays the reply
+     * text, the finish chunk, and the landed message by roughly
+     * summaryLength × typewriterIntervalMs.
+     */
+    typewriter?: boolean;
+    /** Interval between two revealed characters, in milliseconds. 0 means no delay. */
+    typewriterIntervalMs?: number;
 }
 /** Configuration schema with documented defaults. */
 export declare const Config: Schema<CotSummarizerConfig>;
@@ -99,6 +109,8 @@ export interface ResolvedCotSummarizerConfig {
     incremental: boolean;
     chunkChars: number;
     chunkIntervalMs: number;
+    typewriter: boolean;
+    typewriterIntervalMs: number;
 }
 /**
  * Validate and normalize a config object (partial inputs receive the same

@@ -66,6 +66,10 @@ const en: Record<string, string> = {
   chunkCharsHint: 'Raw reasoning characters accumulated before each partial summary; splits prefer sentence boundaries so the summary grows smoothly.',
   chunkIntervalMs: 'Chunk interval (ms)',
   chunkIntervalMsHint: 'Maximum time between partial summaries on slow streams.',
+  typewriter: 'Typewriter reveal',
+  typewriterHint: 'Push the summary one character at a time instead of whole segments. The stream is serial, so the reply text and the landed message wait behind the reveal (roughly summary length × interval).',
+  typewriterIntervalMs: 'Typewriter interval (ms)',
+  typewriterIntervalMsHint: 'Delay between two revealed characters; 0 disables the delay.',
   timeoutMs: 'Request timeout (ms)',
   onError: 'On summarizer failure',
   onErrorHide: 'Hide reasoning',
@@ -115,6 +119,10 @@ const zh: Record<string, string> = {
   chunkCharsHint: '每累积多少字符的原始推理触发一次阶段性总结；切分优先选择句子边界，摘要会平滑增长。',
   chunkIntervalMs: '分块间隔（毫秒）',
   chunkIntervalMsHint: '流式较慢时，两次阶段性总结之间的最大时间间隔。',
+  typewriter: '逐字推送',
+  typewriterHint: '摘要按字逐个推送到前端，而不是整段推送。由于流是串行的，回复正文与落库会随之等待（约 摘要字数×间隔）。',
+  typewriterIntervalMs: '逐字间隔（毫秒）',
+  typewriterIntervalMsHint: '每两个字之间的推送间隔；0 表示不延迟。',
   timeoutMs: '请求超时（毫秒）',
   onError: '总结失败时',
   onErrorHide: '隐藏思维链',
@@ -261,6 +269,27 @@ function SettingsSection({ t }: SettingsSectionProps) {
             onChange={(event) => { set('incremental', event.target.checked) }}
           />
         </Field>
+        <Field label={t('typewriter')} hint={t('typewriterHint')}>
+          <input
+            type="checkbox"
+            checked={draft.typewriter ?? false}
+            onChange={(event) => { set('typewriter', event.target.checked) }}
+          />
+        </Field>
+        {draft.typewriter === true && (
+          <Field label={t('typewriterIntervalMs')} hint={t('typewriterIntervalMsHint')}>
+            <input
+              type="number"
+              min={0}
+              max={2000}
+              value={draft.typewriterIntervalMs ?? 30}
+              onChange={(event) => {
+                const parsed = Number(event.target.value)
+                if (Number.isFinite(parsed)) set('typewriterIntervalMs', parsed)
+              }}
+            />
+          </Field>
+        )}
         <Field label={t('baseUrl')} hint={t('baseUrlHint')}>
           <input
             type="text"
