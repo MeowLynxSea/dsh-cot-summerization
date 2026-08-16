@@ -295,10 +295,13 @@ export async function* transformCoTStream(
    * Start one summarizer call over the raw segment accumulated since the
    * last call. The call runs concurrently with the upstream stream (never
    * paused); its result is folded into the block at the next chunk boundary
-   * once it settles.
+   * once it settles. The raw text before this segment is passed along as a
+   * bounded context tail so later segments can resolve references to files,
+   * sections, or earlier decisions instead of collapsing into terse fragments.
    */
   const fire = (): void => {
     const segment = rawCoT.slice(lastSegmentStart)
+    const previousRaw = rawCoT.slice(0, lastSegmentStart).slice(-2000)
     lastSegmentStart = rawCoT.length
     const at = now()
     lastTriggerAt = at
@@ -306,7 +309,13 @@ export async function* transformCoTStream(
     pendingError = null
     pendingSettled = false
     pendingSegment = segment
-    pending = summarize(segment, cfg, callerSignal, emitted === '' ? undefined : { previousSummary: emitted })
+    const options = emitted === '' && previousRaw === ''
+      ? undefined
+      : {
+          previousSummary: emitted === '' ? undefined : emitted,
+          previousRaw: previousRaw === '' ? undefined : previousRaw,
+        }
+    pending = summarize(segment, cfg, callerSignal, options)
       .then((result) => {
         pendingSettled = true
         return result

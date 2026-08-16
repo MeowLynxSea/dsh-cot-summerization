@@ -136,7 +136,7 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 <summary><b>行为细节(严肃模式)</b></summary>
 
 - 无 reasoning 的流(非思考模型)原样通过,插件不作任何干预。
-- 每次分段摘要只处理**新到达**的段落,之前的摘要作为上下文传入以保持连贯,但不重复输出。
+- 每次分段摘要只处理**新到达**的段落,之前的摘要与最近一段原始推理会作为上下文传入以保持连贯、消解指代,但不重复输出。
 - 去重逻辑:bigram 相似度 ≥ 0.65,或最长公共子串覆盖核心短语的复述句,会被从段落结果中剔除。
 - 主调用中止时摘要请求同步中止,且受 `timeoutMs` 约束。
 - `adaptiveChunk` 开启时,有效分块大小 = `clamp(流速率 × 总结器RTT × chunkSafetyFactor, minChunkChars, maxChunkChars)`,其中流速率与 RTT 均使用 EWMA 平滑。

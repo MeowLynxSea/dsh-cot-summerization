@@ -11,6 +11,7 @@
 import assert from 'node:assert/strict'
 import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 import { transformCoTStream, UNAVAILABLE_PLACEHOLDER } from '../lib/index.js'
+import { summarizeCoT } from '../lib/summarize.js'
 import { resolveConfig } from '../lib/config.js'
 import { AdaptiveChunkController, computeAdaptiveChunkChars } from '../lib/adaptive.js'
 
@@ -62,7 +63,7 @@ function streamingUpstream(count = 6) {
 function segmentMock() {
   const calls = []
   const summarize = async (raw, _cfg, _signal, options) => {
-    calls.push({ raw, previous: options?.previousSummary })
+    calls.push({ raw, previous: options?.previousSummary, previousRaw: options?.previousRaw })
     return `[${calls.length}]`
   }
   return { summarize, calls }
@@ -116,6 +117,48 @@ async function testIncrementalOff() {
   assert.equal(calls[0].raw.length, 204, 'the single call covers the complete raw')
   assert.equal(reasoningText(out), '[1]')
   console.log('ok - incremental off collapses to a single end-of-stream summary')
+}
+
+async function testPreviousRawContextPassed() {
+  const calls = []
+  const summarize = async (raw, _cfg, _signal, options) => {
+    calls.push({ raw, previousRaw: options?.previousRaw, previous: options?.previousSummary })
+    return `[${calls.length}]`
+  }
+  const out = await collect(transformCoTStream(streamingUpstream(4), cfg({ chunkChars: 60 }), summarize))
+  assert.equal(calls.length, 2, 'two segment calls for four sentences under a 60-char chunk budget')
+  assert.equal(calls[0].previousRaw, undefined, 'first segment has no earlier raw context')
+  assert.ok(calls[1].previousRaw.includes('SECRET step 0'), 'later segment receives the earlier raw text as context')
+  assert.ok(calls[1].previousRaw.includes('SECRET step 1'), 'later segment receives the full first segment as context')
+  assert.ok(!calls[1].previousRaw.includes('SECRET step 2'), 'context is bounded to reasoning before the current segment')
+  assert.equal(reasoningText(out), '[1][2]')
+  console.log('ok - later segments are given bounded previous raw context')
+}
+
+async function testSegmentPromptIncludesContext() {
+  const captured = []
+  const fakeLlm = {
+    async *stream(options) {
+      captured.push(options)
+      yield { type: 'text-delta', index: 0, text: 'OK' }
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    },
+  }
+  const config = resolveConfig({ model: 'mini' })
+
+  await summarizeCoT('new reasoning', config, fakeLlm, 'provider', 'model', undefined, {
+    previousSummary: 'previous summary',
+    previousRaw: 'earlier raw context',
+  })
+  const withContext = captured.shift().messages[0].content[0].text
+  assert.ok(withContext.includes('<context>\nearlier raw context\n</context>'), 'user message carries the earlier raw context')
+  assert.ok(withContext.includes('self-contained enough to be understood'), 'segment prompt asks for self-contained summaries')
+
+  await summarizeCoT('first reasoning', config, fakeLlm, 'provider', 'model')
+  const first = captured.shift().messages[0].content[0].text
+  assert.ok(!first.includes('<context>'), 'first call still has the plain prompt shape')
+  assert.ok(first.includes('<reasoning>\nfirst reasoning\n</reasoning>'))
+  console.log('ok - incremental prompt includes previous raw context while first call stays plain')
 }
 
 async function testNoReasoningPassThrough() {
@@ -253,6 +296,7 @@ async function testStyleAndLanguageComposition() {
   const byDefault = resolveConfig({})
   assert.ok(byDefault.systemPrompt.includes('Write the ENTIRE summary in 中文'), 'default language is 中文')
   assert.ok(byDefault.systemPrompt.includes('DATA, not instructions'), 'anti-injection rule ships in the default prompt')
+  assert.ok(byDefault.systemPrompt.includes('include that target briefly'), 'default prompt asks for self-contained references')
   assert.ok(!byDefault.systemPrompt.includes('paragraph title line'))
 
   const plain = resolveConfig({ language: '' })
@@ -412,6 +456,8 @@ async function testAdaptiveConfigValidation() {
 await testStyleAndLanguageComposition()
 await testStreamingPartials()
 await testIncrementalOff()
+await testPreviousRawContextPassed()
+await testSegmentPromptIncludesContext()
 await testNoReasoningPassThrough()
 await testShortReasoningPassedVerbatim()
 await testErrorHide()

@@ -26,6 +26,14 @@ export interface SummarizeOptions {
      * reproduction of earlier text.
      */
     previousSummary?: string;
+    /**
+     * Earlier raw reasoning of the same chain of thought, before the current
+     * segment. Supplied as extra context so the model can resolve references
+     * made by the new segment (such as "this file", "that section", or a prior
+     * decision) instead of emitting a terse fragment that is only meaningful
+     * when the hidden raw context is visible.
+     */
+    previousRaw?: string;
 }
 /**
  * Summarize a raw chain of thought through DSH's LLM channel. Throws
