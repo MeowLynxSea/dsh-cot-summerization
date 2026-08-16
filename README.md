@@ -45,7 +45,7 @@
 | 宣传名 | 现实 |
 | :--- | :--- |
 | **Information Never Existed™** | 原始 reasoning 增量在 `llm/stream` 拦截层被直接吞掉——UI、流式 chunk、落地 transcript 三处均无原文。模型可见历史除外:那里有一份 model-only 的 surface 替换事件,悄悄把原文还给了模型(推理性能要紧)。 |
-| **夏日渐进蒸馏** | 流式分段摘要:每凑满 `chunkChars`(500 字)或 `chunkIntervalMs`(8 秒)触发一次,切分点优先落在句边界。 |
+| **夏日渐进蒸馏** | 流式分段摘要:每凑满 `chunkChars`(500 字)或 `chunkIntervalMs`(8 秒)触发一次,切分点优先落在句边界;开启 `adaptiveChunk` 后,分块大小会随流速率与总结器 RTT 动态缩放。 |
 | **BioGram™ 重叠度量** | bigram Dice 系数,阈值 0.65。该阈值经历了 0.8 → 0.7 → 0.65 的科学调参过程。 |
 | **连续核心追踪引擎** | 最长公共子串,滚动数组实现,O(n·m),零依赖。用来逮住换了前缀、核心没变的复述。 |
 | **Nekomimi™ 边界协议** | 把「喵~」识别为句尾;计算相似度前先剥掉 `喵 / ~ / 〜 / ～`。无论摘要出自哪种风格,以「喵~」结尾的子句都会被正确切分。 |
@@ -128,6 +128,10 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 | `incremental` | `true` | 流式分段摘要(近实时) |
 | `chunkChars` | `500` | 每段积累的原始字符数 |
 | `chunkIntervalMs` | `8000` | 慢流下两次摘要的最大间隔 |
+| `adaptiveChunk` | `true` | 根据实时流速率与总结器 RTT 动态调整分块大小 |
+| `minChunkChars` | `64` | 自适应分块下限(字符) |
+| `maxChunkChars` | `2000` | 自适应分块上限(字符) |
+| `chunkSafetyFactor` | `2` | 一个分块约覆盖多少个总结器 RTT 的流式文本 |
 
 <details>
 <summary><b>行为细节(严肃模式)</b></summary>
@@ -136,6 +140,7 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 - 每次分段摘要只处理**新到达**的段落,之前的摘要作为上下文传入以保持连贯,但不重复输出。
 - 去重逻辑:bigram 相似度 ≥ 0.65,或最长公共子串覆盖核心短语的复述句,会被从段落结果中剔除。
 - 主调用中止时摘要请求同步中止,且受 `timeoutMs` 约束。
+- `adaptiveChunk` 开启时,有效分块大小 = `clamp(流速率 × 总结器RTT × chunkSafetyFactor, minChunkChars, maxChunkChars)`,其中流速率与 RTT 均使用 EWMA 平滑。
 
 </details>
 

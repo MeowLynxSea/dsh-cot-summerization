@@ -66,7 +66,8 @@ export type SummarizeFn = (raw: string, cfg: ResolvedCotSummarizerConfig, signal
  * @param callerSignal - the model call's abort signal, when present.
  * @param log - warning sink for transform-level failures.
  * @param capture - raw-reasoning recorder for surface restoration, when tracked.
+ * @param now - clock injectable for deterministic tests; defaults to `Date.now`.
  */
-export declare function transformCoTStream(upstream: AsyncIterable<StreamChunk>, cfg: ResolvedCotSummarizerConfig, summarize: SummarizeFn, callerSignal: AbortSignal | undefined, log?: (message: string, ...args: unknown[]) => void, capture?: RawCoTCapture | undefined): AsyncGenerator<StreamChunk>;
+export declare function transformCoTStream(upstream: AsyncIterable<StreamChunk>, cfg: ResolvedCotSummarizerConfig, summarize: SummarizeFn, callerSignal: AbortSignal | undefined, log?: (message: string, ...args: unknown[]) => void, capture?: RawCoTCapture | undefined, now?: () => number): AsyncGenerator<StreamChunk>;
 /** Plugin entry: register settings, then wrap every streaming model call. */
 export declare function apply(ctx: Context, config?: CotSummarizerConfig): () => void;

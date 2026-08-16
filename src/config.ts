@@ -98,6 +98,18 @@ export interface CotSummarizerConfig {
   /** Maximum time between partial summary calls while the stream is slow. */
   chunkIntervalMs?: number
   /**
+   * Dynamically size the effective chunk from the live stream rate and the
+   * summarizer's measured round-trip time. The effective chunk is clamped to
+   * `[minChunkChars, maxChunkChars]` and targets `rate × rtt × chunkSafetyFactor`.
+   */
+  adaptiveChunk?: boolean
+  /** Lower bound for the adaptive chunk size (characters). */
+  minChunkChars?: number
+  /** Upper bound for the adaptive chunk size (characters). */
+  maxChunkChars?: number
+  /** How many summarizer RTTs of streamed text one adaptive chunk should cover. */
+  chunkSafetyFactor?: number
+  /**
    * Emit the summary to the frontend one character at a time (typewriter)
    * instead of whole completed segments. Off by default: the transform emits
    * on a single serial stream, so pacing every character delays the reply
@@ -127,6 +139,10 @@ export const Config: Schema<CotSummarizerConfig> = z.object({
   incremental: z.boolean().default(true),
   chunkChars: z.number().default(500),
   chunkIntervalMs: z.number().default(8000),
+  adaptiveChunk: z.boolean().default(true),
+  minChunkChars: z.number().default(64),
+  maxChunkChars: z.number().default(2000),
+  chunkSafetyFactor: z.number().default(2),
   typewriter: z.boolean().default(false),
   typewriterIntervalMs: z.number().default(15),
 })
@@ -149,6 +165,10 @@ export interface ResolvedCotSummarizerConfig {
   incremental: boolean
   chunkChars: number
   chunkIntervalMs: number
+  adaptiveChunk: boolean
+  minChunkChars: number
+  maxChunkChars: number
+  chunkSafetyFactor: number
   typewriter: boolean
   typewriterIntervalMs: number
 }
@@ -170,6 +190,10 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
   const incremental = config.incremental ?? true
   const chunkChars = config.chunkChars ?? 500
   const chunkIntervalMs = config.chunkIntervalMs ?? 8000
+  const adaptiveChunk = config.adaptiveChunk ?? true
+  const minChunkChars = config.minChunkChars ?? 64
+  const maxChunkChars = config.maxChunkChars ?? 2000
+  const chunkSafetyFactor = config.chunkSafetyFactor ?? 2
   const typewriter = config.typewriter ?? false
   const typewriterIntervalMs = config.typewriterIntervalMs ?? 15
   const language = (config.language ?? '中文').trim()
@@ -183,6 +207,9 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
   if (chunkIntervalMs < 500 || chunkIntervalMs > 600000) {
     throw new Error('cot-summarizer: chunkIntervalMs must be within [500, 600000]')
   }
+  if (minChunkChars < 1) throw new Error('cot-summarizer: minChunkChars must be >= 1')
+  if (maxChunkChars < minChunkChars) throw new Error('cot-summarizer: maxChunkChars must be >= minChunkChars')
+  if (chunkSafetyFactor <= 0) throw new Error('cot-summarizer: chunkSafetyFactor must be > 0')
   if (typewriterIntervalMs < 0 || typewriterIntervalMs > 2000) {
     throw new Error('cot-summarizer: typewriterIntervalMs must be within [0, 2000]')
   }
@@ -220,6 +247,10 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
     incremental,
     chunkChars,
     chunkIntervalMs,
+    adaptiveChunk,
+    minChunkChars,
+    maxChunkChars,
+    chunkSafetyFactor,
     typewriter,
     typewriterIntervalMs,
   }

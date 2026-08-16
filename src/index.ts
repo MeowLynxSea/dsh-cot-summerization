@@ -43,6 +43,7 @@ import {
   type ResolvedCotSummarizerConfig,
 } from './config.ts'
 import { summarizeCoT, type SummarizeOptions } from './summarize.ts'
+import { AdaptiveChunkController } from './adaptive.ts'
 import { installCotSummarizerWeb } from './web.ts'
 import { createRawCapture, createRawHistoryRestorer, type RawCoTCapture } from './history.ts'
 
@@ -239,6 +240,7 @@ class CharQueue {
  * @param callerSignal - the model call's abort signal, when present.
  * @param log - warning sink for transform-level failures.
  * @param capture - raw-reasoning recorder for surface restoration, when tracked.
+ * @param now - clock injectable for deterministic tests; defaults to `Date.now`.
  */
 export async function* transformCoTStream(
   upstream: AsyncIterable<StreamChunk>,
@@ -247,6 +249,7 @@ export async function* transformCoTStream(
   callerSignal: AbortSignal | undefined,
   log: (message: string, ...args: unknown[]) => void = () => {},
   capture: RawCoTCapture | undefined = undefined,
+  now: () => number = Date.now,
 ): AsyncGenerator<StreamChunk> {
   let rawCoT = ''
   let sawReasoning = false
@@ -260,12 +263,23 @@ export async function* transformCoTStream(
   const queue = new CharQueue()
   /** Raw length already handed to a summarizer call; the next segment starts here. */
   let lastSegmentStart = 0
-  let lastTriggerAt = Date.now()
+  let lastTriggerAt = now()
   let pending: Promise<string> | undefined
   let pendingSettled = false
   let pendingError: unknown = null
+  /** When the in-flight summarizer call started, for RTT measurement. */
+  let pendingStartedAt = 0
   /** The raw segment handed to the in-flight call, for echo detection. */
   let pendingSegment = ''
+  /** Adaptive chunk controller; only present when the feature is enabled. */
+  const adaptive = cfg.adaptiveChunk
+    ? new AdaptiveChunkController({
+        baseChunkChars: cfg.chunkChars,
+        minChunkChars: cfg.minChunkChars,
+        maxChunkChars: cfg.maxChunkChars,
+        safetyFactor: cfg.chunkSafetyFactor,
+      })
+    : undefined
   /**
    * Assembly over the UNTOUCHED upstream stream — the wire-exact blocks the
    * adapter produced. The replacement message for the model-visible surface
@@ -286,7 +300,9 @@ export async function* transformCoTStream(
   const fire = (): void => {
     const segment = rawCoT.slice(lastSegmentStart)
     lastSegmentStart = rawCoT.length
-    lastTriggerAt = Date.now()
+    const at = now()
+    lastTriggerAt = at
+    pendingStartedAt = at
     pendingError = null
     pendingSettled = false
     pendingSegment = segment
@@ -371,6 +387,7 @@ export async function* transformCoTStream(
   async function* foldPending(): AsyncGenerator<StreamChunk> {
     if (pending === undefined) return
     const result = await pending
+    adaptive?.recordRtt(now() - pendingStartedAt)
     const error = pendingError
     const segment = pendingSegment
     pending = undefined
@@ -394,13 +411,16 @@ export async function* transformCoTStream(
     if (deduped !== '') enqueue(deduped)
   }
 
+  /** Current volume threshold: configured chunk size, or the adaptive estimate. */
+  const currentChunkChars = (): number => adaptive?.currentChunkChars() ?? cfg.chunkChars
+
   /** Decide whether another segment call is due, given the raw text just grew. */
   const maybeFirePartial = (): void => {
     if (pending !== undefined || !cfg.incremental) return
     const since = rawCoT.length - lastSegmentStart
     if (since < cfg.minReasoningChars) return
-    const elapsed = Date.now() - lastTriggerAt
-    const byVolume = since >= cfg.chunkChars && endsAtBoundary(rawCoT)
+    const elapsed = now() - lastTriggerAt
+    const byVolume = since >= currentChunkChars() && endsAtBoundary(rawCoT)
     const byTime = elapsed >= cfg.chunkIntervalMs
       && since >= Math.max(cfg.minReasoningChars, 64)
       && (endsAtBoundary(rawCoT) || elapsed >= cfg.chunkIntervalMs * 2)
@@ -443,6 +463,7 @@ export async function* transformCoTStream(
         sawReasoning = true
         if (capture !== undefined) capture.sawReasoning = true
         rawCoT += chunk.text
+        adaptive?.recordDelta(chunk.text.length, now())
         maybeFirePartial()
         continue
       }

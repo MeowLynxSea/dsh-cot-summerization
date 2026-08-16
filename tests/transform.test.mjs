@@ -12,6 +12,7 @@ import assert from 'node:assert/strict'
 import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 import { transformCoTStream, UNAVAILABLE_PLACEHOLDER } from '../lib/index.js'
 import { resolveConfig } from '../lib/config.js'
+import { AdaptiveChunkController, computeAdaptiveChunkChars } from '../lib/adaptive.js'
 
 /** A resolved config with the given partial overrides. */
 function cfg(overrides = {}) {
@@ -364,6 +365,50 @@ async function testTypewriterKeepsCodePointsWhole() {
   console.log('ok - typewriter never splits surrogate pairs')
 }
 
+async function testAdaptiveChunkFormula() {
+  assert.equal(computeAdaptiveChunkChars(500, 0, 100), 500, 'missing rate falls back to base')
+  assert.equal(computeAdaptiveChunkChars(500, 2, 0), 500, 'missing RTT falls back to base')
+  assert.equal(computeAdaptiveChunkChars(500, 0, 100, 2, 600, 2000), 600, 'fallback is still clamped')
+  assert.equal(computeAdaptiveChunkChars(500, 2, 100, 2, 64, 2000), 400, 'rate×rtt×factor')
+  assert.equal(computeAdaptiveChunkChars(500, 0.1, 100, 2, 64, 2000), 64, 'lower clamp')
+  assert.equal(computeAdaptiveChunkChars(500, 100, 100, 2, 64, 2000), 2000, 'upper clamp')
+  console.log('ok - adaptive chunk formula clamps and falls back')
+}
+
+async function testAdaptiveChunkController() {
+  const controller = new AdaptiveChunkController({
+    baseChunkChars: 500,
+    minChunkChars: 64,
+    maxChunkChars: 2000,
+    safetyFactor: 2,
+  })
+  assert.equal(controller.currentChunkChars(), 500, 'no measurements yet uses base')
+
+  controller.recordDelta(50, 0)
+  assert.equal(controller.currentChunkChars(), 500, 'rate alone is not enough')
+
+  controller.recordDelta(50, 25)
+  controller.recordRtt(100)
+  assert.equal(controller.currentChunkChars(), 400, '2 chars/ms × 100ms RTT × 2')
+
+  controller.recordDelta(50, 50)
+  controller.recordRtt(200)
+  // RTT EWMA: 0.3×200 + 0.7×100 = 130; rate EWMA stays 2.
+  assert.equal(controller.currentChunkChars(), 520, 'EWMA RTT blends into the chunk size')
+  console.log('ok - adaptive chunk controller blends stream rate and summarizer RTT')
+}
+
+async function testAdaptiveConfigValidation() {
+  assert.equal(resolveConfig({ adaptiveChunk: true }).adaptiveChunk, true)
+  assert.equal(resolveConfig({ adaptiveChunk: true }).minChunkChars, 64)
+  assert.equal(resolveConfig({ adaptiveChunk: true }).maxChunkChars, 2000)
+  assert.equal(resolveConfig({ adaptiveChunk: true }).chunkSafetyFactor, 2)
+  assert.throws(() => resolveConfig({ minChunkChars: 0 }), /minChunkChars/)
+  assert.throws(() => resolveConfig({ minChunkChars: 100, maxChunkChars: 50 }), /maxChunkChars/)
+  assert.throws(() => resolveConfig({ chunkSafetyFactor: 0 }), /chunkSafetyFactor/)
+  console.log('ok - adaptive chunk config defaults and validation')
+}
+
 await testStyleAndLanguageComposition()
 await testStreamingPartials()
 await testIncrementalOff()
@@ -380,4 +425,7 @@ await testEchoedRawDropped()
 await testMultiReasoningBlocks()
 await testTypewriterPacesCharacters()
 await testTypewriterKeepsCodePointsWhole()
+await testAdaptiveChunkFormula()
+await testAdaptiveChunkController()
+await testAdaptiveConfigValidation()
 console.log('all transform tests passed')

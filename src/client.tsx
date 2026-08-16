@@ -66,6 +66,14 @@ const en: Record<string, string> = {
   chunkCharsHint: 'Raw reasoning characters accumulated before each partial summary; splits prefer sentence boundaries so the summary grows smoothly.',
   chunkIntervalMs: 'Chunk interval (ms)',
   chunkIntervalMsHint: 'Maximum time between partial summaries on slow streams.',
+  adaptiveChunk: 'Adaptive chunk size',
+  adaptiveChunkHint: 'Dynamically size chunks from the live stream rate and summarizer RTT.',
+  minChunkChars: 'Min adaptive chunk (chars)',
+  minChunkCharsHint: 'Lower bound for the adaptive chunk size.',
+  maxChunkChars: 'Max adaptive chunk (chars)',
+  maxChunkCharsHint: 'Upper bound for the adaptive chunk size.',
+  chunkSafetyFactor: 'Chunk RTT factor',
+  chunkSafetyFactorHint: 'How many summarizer RTTs of streamed text one chunk should cover.',
   typewriter: 'Typewriter reveal',
   typewriterHint: 'Push the summary one character at a time instead of whole segments. The stream is serial, so the reply text and the landed message wait behind the reveal (roughly summary length × interval).',
   typewriterIntervalMs: 'Typewriter interval (ms)',
@@ -119,6 +127,14 @@ const zh: Record<string, string> = {
   chunkCharsHint: '每累积多少字符的原始推理触发一次阶段性总结；切分优先选择句子边界，摘要会平滑增长。',
   chunkIntervalMs: '分块间隔（毫秒）',
   chunkIntervalMsHint: '流式较慢时，两次阶段性总结之间的最大时间间隔。',
+  adaptiveChunk: '自适应分块',
+  adaptiveChunkHint: '根据实时流速率和总结器 RTT 动态调整分块大小。',
+  minChunkChars: '自适应最小分块（字符）',
+  minChunkCharsHint: '自适应分块的下限。',
+  maxChunkChars: '自适应最大分块（字符）',
+  maxChunkCharsHint: '自适应分块的上限。',
+  chunkSafetyFactor: '分块 RTT 系数',
+  chunkSafetyFactorHint: '一个分块大约覆盖多少个总结器 RTT 的流式文本。',
   typewriter: '逐字推送',
   typewriterHint: '摘要按字逐个推送到前端，而不是整段推送。由于流是串行的，回复正文与落库会随之等待（约 摘要字数×间隔）。',
   typewriterIntervalMs: '逐字间隔（毫秒）',
@@ -403,6 +419,50 @@ function SettingsSection({ t }: SettingsSectionProps) {
             }}
           />
         </Field>
+        <Field label={t('adaptiveChunk')} hint={t('adaptiveChunkHint')}>
+          <Switch
+            checked={draft.adaptiveChunk ?? true}
+            onChange={(checked) => { set('adaptiveChunk', checked) }}
+          />
+        </Field>
+        {draft.adaptiveChunk === true && (
+          <>
+            <Field label={t('minChunkChars')} hint={t('minChunkCharsHint')}>
+              <input
+                type="number"
+                min={1}
+                value={draft.minChunkChars ?? 64}
+                onChange={(event) => {
+                  const parsed = Number(event.target.value)
+                  if (Number.isFinite(parsed)) set('minChunkChars', parsed)
+                }}
+              />
+            </Field>
+            <Field label={t('maxChunkChars')} hint={t('maxChunkCharsHint')}>
+              <input
+                type="number"
+                min={1}
+                value={draft.maxChunkChars ?? 2000}
+                onChange={(event) => {
+                  const parsed = Number(event.target.value)
+                  if (Number.isFinite(parsed)) set('maxChunkChars', parsed)
+                }}
+              />
+            </Field>
+            <Field label={t('chunkSafetyFactor')} hint={t('chunkSafetyFactorHint')}>
+              <input
+                type="number"
+                min={0.1}
+                step={0.1}
+                value={draft.chunkSafetyFactor ?? 2}
+                onChange={(event) => {
+                  const parsed = Number(event.target.value)
+                  if (Number.isFinite(parsed)) set('chunkSafetyFactor', parsed)
+                }}
+              />
+            </Field>
+          </>
+        )}
         <Field label={t('timeoutMs')}>
           <input
             type="number"

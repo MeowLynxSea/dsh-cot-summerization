@@ -79,6 +79,18 @@ export interface CotSummarizerConfig {
     /** Maximum time between partial summary calls while the stream is slow. */
     chunkIntervalMs?: number;
     /**
+     * Dynamically size the effective chunk from the live stream rate and the
+     * summarizer's measured round-trip time. The effective chunk is clamped to
+     * `[minChunkChars, maxChunkChars]` and targets `rate × rtt × chunkSafetyFactor`.
+     */
+    adaptiveChunk?: boolean;
+    /** Lower bound for the adaptive chunk size (characters). */
+    minChunkChars?: number;
+    /** Upper bound for the adaptive chunk size (characters). */
+    maxChunkChars?: number;
+    /** How many summarizer RTTs of streamed text one adaptive chunk should cover. */
+    chunkSafetyFactor?: number;
+    /**
      * Emit the summary to the frontend one character at a time (typewriter)
      * instead of whole completed segments. Off by default: the transform emits
      * on a single serial stream, so pacing every character delays the reply
@@ -109,6 +121,10 @@ export interface ResolvedCotSummarizerConfig {
     incremental: boolean;
     chunkChars: number;
     chunkIntervalMs: number;
+    adaptiveChunk: boolean;
+    minChunkChars: number;
+    maxChunkChars: number;
+    chunkSafetyFactor: number;
     typewriter: boolean;
     typewriterIntervalMs: number;
 }
