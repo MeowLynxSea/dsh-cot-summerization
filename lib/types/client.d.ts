@@ -5,8 +5,8 @@
  * The Web Client's generic settings transport only serves a fixed namespace
  * whitelist, so — like the vision toolkit — the page reads and writes its
  * namespace through a same-origin route (`/_dsh/cot-summarizer/settings`)
- * mounted by the host half. The API key is never returned by the route;
- * leaving the field blank keeps the stored key.
+ * mounted by the host half. Provider/model dropdown options are served by a
+ * second same-origin route from DSH's own LLM registry.
  * @module dsh-cot-summerization/client
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';

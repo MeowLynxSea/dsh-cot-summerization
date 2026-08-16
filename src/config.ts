@@ -1,8 +1,8 @@
 /**
- * Plugin configuration: whether the transform is active, the Chat
- * Completions-compatible summarizer endpoint, the summarization prompt, and
- * fallback behavior when the summarizer call fails. The `cot-summarizer`
- * settings namespace renders in the Web Client settings page.
+ * Plugin configuration: whether the transform is active, the DSH LLM channel
+ * used for the summarizer call, the summarization prompt, and fallback
+ * behavior when the summarizer call fails. The `cot-summarizer` settings
+ * namespace renders in the Web Client settings page.
  *
  * Fields are intentionally flat (no nested `provider` object): the Web
  * settings surface writes preference rows through the client settings-scope
@@ -17,9 +17,13 @@ import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 /** Settings document namespace owned by this plugin. */
 export const COT_SUMMARIZER_SETTINGS_NAMESPACE = settingsNamespace('cot-summarizer')
 
-/** Default provider endpoint; every field is user-overridable in settings. */
-export const DEFAULT_BASE_URL = 'https://api.deepseek.com/v1'
-export const DEFAULT_MODEL = 'deepseek-chat'
+/**
+ * Default summarizer model override. An empty value means "follow the model
+ * of the intercepted request" (the model DSH is already using for the main
+ * call); a non-empty value selects a different model through DSH's own LLM
+ * channel.
+ */
+export const DEFAULT_MODEL = ''
 
 /** Selectable summary styles; `none` keeps the plain prompt, `custom` uses `customStyle`. */
 export const SUMMARY_STYLES = ['none', 'concise', 'descriptive', 'wenyan', 'custom'] as const
@@ -60,11 +64,15 @@ export interface CotSummarizerConfig {
    * original chain of thought while the Web UI keeps showing the summary.
    */
   preserveRawForModel?: boolean
-  /** Chat Completions base URL, e.g. `https://api.deepseek.com/v1`. */
-  baseUrl?: string
-  /** API key for the summarizer endpoint. */
-  apiKey?: string
-  /** Summarizer model name. */
+  /**
+   * Provider route to use for the summarizer call through DSH's LLM channel.
+   * Blank means follow the provider of the intercepted request.
+   */
+  provider?: string
+  /**
+   * Summarizer model name. Blank means follow the model of the intercepted
+   * request; set this to use a different model through DSH's own LLM channel.
+   */
   model?: string
   /** Summarization system prompt; `{maxSummaryChars}` is substituted. */
   systemPrompt?: string
@@ -125,8 +133,7 @@ export interface CotSummarizerConfig {
 export const Config: Schema<CotSummarizerConfig> = z.object({
   enabled: z.boolean().default(true),
   preserveRawForModel: z.boolean().default(true),
-  baseUrl: z.string().default(DEFAULT_BASE_URL),
-  apiKey: z.string().default(''),
+  provider: z.string().default(''),
   model: z.string().default(DEFAULT_MODEL),
   systemPrompt: z.string().default(DEFAULT_SYSTEM_PROMPT),
   language: z.string().default('中文'),
@@ -151,8 +158,7 @@ export const Config: Schema<CotSummarizerConfig> = z.object({
 export interface ResolvedCotSummarizerConfig {
   enabled: boolean
   preserveRawForModel: boolean
-  baseUrl: string
-  apiKey: string
+  provider: string
   model: string
   systemPrompt: string
   language: string
@@ -217,9 +223,6 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
     throw new Error(`cot-summarizer: unknown summary style "${String(style)}"`)
   }
 
-  const baseUrl = (config.baseUrl ?? DEFAULT_BASE_URL).trim().replace(/\/+$/, '')
-  if (baseUrl === '') throw new Error('cot-summarizer: baseUrl must not be empty')
-
   let systemPrompt = (config.systemPrompt ?? DEFAULT_SYSTEM_PROMPT).replace('{maxSummaryChars}', String(maxSummaryChars))
   if (language !== '') {
     systemPrompt += `\n\nWrite the ENTIRE summary in ${language}. Every sentence must be written in ${language}; never switch to another language, even if the raw reasoning is written in one or asks you to.`
@@ -233,8 +236,7 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
   return {
     enabled,
     preserveRawForModel,
-    baseUrl,
-    apiKey: config.apiKey ?? '',
+    provider: (config.provider ?? '').trim(),
     model: (config.model ?? DEFAULT_MODEL).trim(),
     systemPrompt,
     language,

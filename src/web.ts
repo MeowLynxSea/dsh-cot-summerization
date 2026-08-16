@@ -19,14 +19,27 @@ import { COT_SUMMARIZER_SETTINGS_NAMESPACE } from './config.ts'
 /** Exact route used by the browser Settings page. */
 export const COT_SUMMARIZER_SETTINGS_ROUTE = '/_dsh/cot-summarizer/settings'
 
+/** Exact route used by the browser to fetch DSH provider/model options. */
+export const COT_SUMMARIZER_MODEL_OPTIONS_ROUTE = '/_dsh/cot-summarizer/model-options'
+
 /** Response payload of the settings route. */
 export interface CotSummarizerSettingsView {
-  /** Resolved configuration; the API key is never serialized. */
-  settings: CotSummarizerConfig & { apiKey?: string }
-  /** Whether a non-empty API key is currently configured. */
-  apiKeyConfigured: boolean
+  /** Resolved configuration. */
+  settings: CotSummarizerConfig
   /** Namespace revision fencing the next write. */
   revision: number
+}
+
+/** One selectable provider or model entry. */
+export interface CotSummarizerModelOption {
+  id: string
+  name?: string
+}
+
+/** Provider/model options exposed from DSH's LLM registry for the dropdown UI. */
+export interface CotSummarizerModelOptions {
+  providers: CotSummarizerModelOption[]
+  modelsByProvider: Record<string, CotSummarizerModelOption[]>
 }
 
 function responseJson(res: ServerResponse, status: number, body: unknown): void {
@@ -91,16 +104,48 @@ export class CotSummarizerWebBackend {
     private readonly scope: SettingsScope<CotSummarizerConfig>,
   ) {}
 
-  /** Current view: resolved settings (without the API key) plus the revision. */
+  /** Current view: resolved settings plus the revision. */
   private view(): CotSummarizerSettingsView {
     const current = this.scope.get()
     const descriptors = this.ctx.settings.describe()
     const revision = descriptors.find((entry) => String(entry.ns) === String(COT_SUMMARIZER_SETTINGS_NAMESPACE))?.revision ?? 0
-    const { apiKey, ...settings } = current
     return {
-      settings: settings as CotSummarizerConfig & { apiKey?: string },
-      apiKeyConfigured: apiKey !== undefined && apiKey !== '',
+      settings: current,
       revision,
+    }
+  }
+
+  /** Provider/model options from DSH's own LLM registry, for dropdowns. */
+  async modelOptions(): Promise<CotSummarizerModelOptions> {
+    const providers = this.ctx.llm.listProviders().map((provider) => ({ id: provider.id, name: provider.name }))
+    const entries = await Promise.all(providers.map(async (provider) => {
+      let models: CotSummarizerModelOption[] = []
+      try {
+        const discovered = await this.ctx.llm.listModels(provider.id)
+        models = discovered.map((model) => ({ id: model.id, name: model.name }))
+      } catch (error) {
+        this.ctx.logger.warn('cot-summarizer: failed to list models for provider %s: %s', provider.id, publicMessage(error))
+      }
+      return [provider.id, models]
+    }))
+    return {
+      providers,
+      modelsByProvider: Object.fromEntries(entries),
+    }
+  }
+
+  /** Handle the exact model-options route. */
+  async handleModelOptions(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (req.method !== 'GET') {
+      res.setHeader('Allow', 'GET')
+      requestError(res, 405, 'method-not-allowed', 'Use GET')
+      return
+    }
+    try {
+      responseJson(res, 200, { ok: true, value: await this.modelOptions() })
+    } catch (error) {
+      this.ctx.logger.warn('cot-summarizer model options failed: %s', publicMessage(error))
+      requestError(res, 503, 'model-options-unavailable', 'cot-summarizer model options are unavailable')
     }
   }
 
@@ -136,10 +181,6 @@ export class CotSummarizerWebBackend {
       return
     }
     const patch = parsed.value as Record<string, unknown>
-    // An empty API key in the form means "keep the stored key".
-    if (typeof patch.apiKey === 'string' && patch.apiKey.trim() === '') {
-      delete patch.apiKey
-    }
     try {
       await this.scope.update(patch)
       responseJson(res, 200, { ok: true, value: this.view() })
@@ -162,6 +203,11 @@ export function installCotSummarizerWeb(ctx: Context, scope: SettingsScope<CotSu
       kind: 'exact',
       path: COT_SUMMARIZER_SETTINGS_ROUTE,
       handler: (req, res) => { void backend.handle(req, res) },
-    }), 'dsh-cot-summerization: Web routes')
+    }), 'dsh-cot-summerization: Settings route')
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: COT_SUMMARIZER_MODEL_OPTIONS_ROUTE,
+      handler: (req, res) => { void backend.handleModelOptions(req, res) },
+    }), 'dsh-cot-summerization: Model options route')
   })
 }

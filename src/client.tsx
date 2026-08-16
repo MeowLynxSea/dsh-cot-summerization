@@ -5,8 +5,8 @@
  * The Web Client's generic settings transport only serves a fixed namespace
  * whitelist, so — like the vision toolkit — the page reads and writes its
  * namespace through a same-origin route (`/_dsh/cot-summarizer/settings`)
- * mounted by the host half. The API key is never returned by the route;
- * leaving the field blank keeps the stored key.
+ * mounted by the host half. Provider/model dropdown options are served by a
+ * second same-origin route from DSH's own LLM registry.
  * @module dsh-cot-summerization/client
  */
 
@@ -19,6 +19,7 @@ import type { CotSummarizerConfig } from './config.ts'
 
 const NS = 'cot-summarizer'
 const SETTINGS_ROUTE = '/_dsh/cot-summarizer/settings'
+const MODEL_OPTIONS_ROUTE = '/_dsh/cot-summarizer/model-options'
 
 type LocaleKey = keyof typeof en
 
@@ -36,14 +37,13 @@ const en: Record<string, string> = {
   enabled: 'Enabled',
   preserveRawForModel: 'Keep raw reasoning for the model',
   preserveRawForModelHint: 'Restore the original chain of thought in the model-visible history (Agent Loop performance is unaffected); only the Web UI shows the summary.',
-  baseUrl: 'Base URL',
-  baseUrlHint: 'Any Chat Completions-compatible endpoint.',
-  apiKey: 'API key',
-  apiKeyConfiguredPlaceholder: 'Configured; leave blank to keep it',
-  apiKeyPlaceholder: 'Paste the API key',
-  apiKeyHint: 'Sent as the Authorization bearer for summarizer requests. Never shown again after saving.',
+  provider: 'Provider',
+  providerHint: 'DSH provider route for the summarizer call. Choose "Current provider" to follow the provider of the current request.',
+  providerCurrent: 'Current provider',
   model: 'Summarizer model',
-  modelHint: 'The "small model" that summarizes the raw reasoning.',
+  modelHint: 'Model used through DSH\'s LLM channel. Choose "Current model" to follow the model of the current request, or pick another model.',
+  modelCurrent: 'Current model',
+  modelOptionsFailed: 'Failed to load model options.',
   systemPrompt: 'Summarization prompt',
   systemPromptHint: 'Override the default prompt. {maxSummaryChars} is substituted with the cap below.',
   language: 'Summary language',
@@ -97,14 +97,13 @@ const zh: Record<string, string> = {
   enabled: '启用',
   preserveRawForModel: '模型历史保留原文',
   preserveRawForModelHint: '在模型可见历史中恢复原始思维链（Agent Loop 推理不受影响），仅 Web 界面显示摘要。',
-  baseUrl: '接口地址',
-  baseUrlHint: '任意兼容 Chat Completions 的接口地址。',
-  apiKey: 'API 密钥',
-  apiKeyConfiguredPlaceholder: '已配置，留空保持不变',
-  apiKeyPlaceholder: '粘贴 API 密钥',
-  apiKeyHint: '总结请求会以 Bearer 形式携带该密钥。保存后不再显示。',
+  provider: '提供方',
+  providerHint: '用于总结调用的 DSH 提供方路由。选择“当前提供方”则跟随当前请求的提供方。',
+  providerCurrent: '当前提供方',
   model: '总结模型',
-  modelHint: '用于总结原始思维链的“小模型”。',
+  modelHint: '通过 DSH 的 LLM 通道使用的模型。选择“当前模型”则跟随当前请求的模型，也可选择其他模型。',
+  modelCurrent: '当前模型',
+  modelOptionsFailed: '模型选项加载失败。',
   systemPrompt: '总结提示词',
   systemPromptHint: '覆盖默认提示词。{maxSummaryChars} 会被替换为下方的长度上限。',
   language: '总结语言',
@@ -155,15 +154,31 @@ type T = (key: LocaleKey) => string
 
 interface SettingsView {
   settings: CotSummarizerConfig
-  apiKeyConfigured: boolean
   revision: number
+}
+
+interface CotSummarizerModelOption {
+  id: string
+  name?: string
+}
+
+interface CotSummarizerModelOptions {
+  providers: CotSummarizerModelOption[]
+  modelsByProvider: Record<string, CotSummarizerModelOption[]>
 }
 
 async function fetchView(): Promise<SettingsView> {
   const response = await fetch(SETTINGS_ROUTE)
   const data: unknown = await response.json()
-  if (!isOk(data)) throw new Error(errorMessage(data) ?? 'settings request failed')
-  return data.value as SettingsView
+  if (!isOk<SettingsView>(data)) throw new Error(errorMessage(data) ?? 'settings request failed')
+  return data.value
+}
+
+async function fetchModelOptions(): Promise<CotSummarizerModelOptions> {
+  const response = await fetch(MODEL_OPTIONS_ROUTE)
+  const data: unknown = await response.json()
+  if (!isOk<CotSummarizerModelOptions>(data)) throw new Error(errorMessage(data) ?? 'model options request failed')
+  return data.value
 }
 
 async function saveView(revision: number, value: Record<string, unknown>): Promise<SettingsView> {
@@ -173,11 +188,11 @@ async function saveView(revision: number, value: Record<string, unknown>): Promi
     body: JSON.stringify({ expectedRevision: revision, value }),
   })
   const data: unknown = await response.json()
-  if (!isOk(data)) throw new Error(errorMessage(data) ?? 'settings save failed')
-  return data.value as SettingsView
+  if (!isOk<SettingsView>(data)) throw new Error(errorMessage(data) ?? 'settings save failed')
+  return data.value
 }
 
-function isOk(data: unknown): data is { ok: true; value: SettingsView } {
+function isOk<T>(data: unknown): data is { ok: true; value: T } {
   return typeof data === 'object' && data !== null && (data as { ok?: unknown }).ok === true
 }
 
@@ -224,7 +239,8 @@ function SettingsSection({ t }: SettingsSectionProps) {
   const [view, setView] = useState<SettingsView>()
   const [error, setError] = useState<string>()
   const [draft, setDraft] = useState<CotSummarizerConfig>({})
-  const [apiKeyDraft, setApiKeyDraft] = useState('')
+  const [modelOptions, setModelOptions] = useState<CotSummarizerModelOptions>()
+  const [modelOptionsError, setModelOptionsError] = useState<string>()
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const savedTimer = useRef<ReturnType<typeof setTimeout>>()
@@ -238,6 +254,18 @@ function SettingsSection({ t }: SettingsSectionProps) {
     }).catch((reason: unknown) => {
       if (cancelled) return
       setError(reason instanceof Error ? reason.message : String(reason))
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchModelOptions().then((options) => {
+      if (cancelled) return
+      setModelOptions(options)
+    }).catch((reason: unknown) => {
+      if (cancelled) return
+      setModelOptionsError(reason instanceof Error ? reason.message : String(reason))
     })
     return () => { cancelled = true }
   }, [])
@@ -257,11 +285,9 @@ function SettingsSection({ t }: SettingsSectionProps) {
     setSaving(true)
     setError(undefined)
     const value: Record<string, unknown> = { ...draft }
-    if (apiKeyDraft.trim() !== '') value.apiKey = apiKeyDraft.trim()
     void saveView(view.revision, value).then((next) => {
       setView(next)
       setDraft(next.settings)
-      setApiKeyDraft('')
       setSaving(false)
       setSaved(true)
       if (savedTimer.current !== undefined) clearTimeout(savedTimer.current)
@@ -271,6 +297,13 @@ function SettingsSection({ t }: SettingsSectionProps) {
       setError(reason instanceof Error ? reason.message : String(reason))
     })
   }
+
+  const selectedProvider = draft.provider ?? ''
+  const providerModels = selectedProvider !== '' && modelOptions !== undefined
+    ? (modelOptions.modelsByProvider[selectedProvider] ?? [])
+    : []
+  const currentModel = draft.model ?? ''
+  const hasCustomModel = currentModel !== '' && !providerModels.some((model) => model.id === currentModel)
 
   return (
     <section className="dshc-section">
@@ -317,27 +350,42 @@ function SettingsSection({ t }: SettingsSectionProps) {
             />
           </Field>
         )}
-        <Field label={t('baseUrl')} hint={t('baseUrlHint')}>
-          <input
-            type="text"
-            value={draft.baseUrl ?? ''}
-            onChange={(event) => { set('baseUrl', event.target.value) }}
-          />
+        <Field label={t('provider')} hint={modelOptionsError !== undefined ? `${t('providerHint')} ${t('modelOptionsFailed')} ${modelOptionsError}` : t('providerHint')}>
+          <select
+            value={selectedProvider}
+            onChange={(event) => {
+              const nextProvider = event.target.value
+              setDraft((previous) => {
+                const next = { ...previous, provider: nextProvider }
+                const current = next.model ?? ''
+                if (nextProvider !== '' && modelOptions !== undefined && current !== '') {
+                  const models = modelOptions.modelsByProvider[nextProvider] ?? []
+                  if (!models.some((model) => model.id === current)) next.model = ''
+                }
+                return next
+              })
+              setSaved(false)
+            }}
+          >
+            <option value="">{t('providerCurrent')}</option>
+            {modelOptions?.providers.map((provider) => (
+              <option key={provider.id} value={provider.id}>{provider.name || provider.id}</option>
+            ))}
+          </select>
         </Field>
-        <Field label={t('apiKey')} hint={t('apiKeyHint')}>
-          <input
-            type="password"
-            value={apiKeyDraft}
-            placeholder={view.apiKeyConfigured ? t('apiKeyConfiguredPlaceholder') : t('apiKeyPlaceholder')}
-            onChange={(event) => { setApiKeyDraft(event.target.value) }}
-          />
-        </Field>
-        <Field label={t('model')} hint={t('modelHint')}>
-          <input
-            type="text"
-            value={draft.model ?? ''}
+        <Field label={t('model')} hint={modelOptionsError !== undefined ? `${t('modelHint')} ${t('modelOptionsFailed')} ${modelOptionsError}` : t('modelHint')}>
+          <select
+            value={currentModel}
             onChange={(event) => { set('model', event.target.value) }}
-          />
+          >
+            <option value="">{t('modelCurrent')}</option>
+            {providerModels.map((model) => (
+              <option key={model.id} value={model.id}>{model.name || model.id}</option>
+            ))}
+            {hasCustomModel && (
+              <option value={currentModel}>{currentModel} (custom)</option>
+            )}
+          </select>
         </Field>
         <Field label={t('systemPrompt')} hint={t('systemPromptHint')}>
           <textarea

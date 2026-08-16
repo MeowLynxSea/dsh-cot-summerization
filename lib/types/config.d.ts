@@ -1,8 +1,8 @@
 /**
- * Plugin configuration: whether the transform is active, the Chat
- * Completions-compatible summarizer endpoint, the summarization prompt, and
- * fallback behavior when the summarizer call fails. The `cot-summarizer`
- * settings namespace renders in the Web Client settings page.
+ * Plugin configuration: whether the transform is active, the DSH LLM channel
+ * used for the summarizer call, the summarization prompt, and fallback
+ * behavior when the summarizer call fails. The `cot-summarizer` settings
+ * namespace renders in the Web Client settings page.
  *
  * Fields are intentionally flat (no nested `provider` object): the Web
  * settings surface writes preference rows through the client settings-scope
@@ -12,9 +12,13 @@
 import type Schema from '@deepseek-ai/schemastery';
 /** Settings document namespace owned by this plugin. */
 export declare const COT_SUMMARIZER_SETTINGS_NAMESPACE: import("@deepseek-ai/dsh-settings").SettingsNamespace;
-/** Default provider endpoint; every field is user-overridable in settings. */
-export declare const DEFAULT_BASE_URL = "https://api.deepseek.com/v1";
-export declare const DEFAULT_MODEL = "deepseek-chat";
+/**
+ * Default summarizer model override. An empty value means "follow the model
+ * of the intercepted request" (the model DSH is already using for the main
+ * call); a non-empty value selects a different model through DSH's own LLM
+ * channel.
+ */
+export declare const DEFAULT_MODEL = "";
 /** Selectable summary styles; `none` keeps the plain prompt, `custom` uses `customStyle`. */
 export declare const SUMMARY_STYLES: readonly ["none", "concise", "descriptive", "wenyan", "custom"];
 export type SummaryStyle = (typeof SUMMARY_STYLES)[number];
@@ -41,11 +45,15 @@ export interface CotSummarizerConfig {
      * original chain of thought while the Web UI keeps showing the summary.
      */
     preserveRawForModel?: boolean;
-    /** Chat Completions base URL, e.g. `https://api.deepseek.com/v1`. */
-    baseUrl?: string;
-    /** API key for the summarizer endpoint. */
-    apiKey?: string;
-    /** Summarizer model name. */
+    /**
+     * Provider route to use for the summarizer call through DSH's LLM channel.
+     * Blank means follow the provider of the intercepted request.
+     */
+    provider?: string;
+    /**
+     * Summarizer model name. Blank means follow the model of the intercepted
+     * request; set this to use a different model through DSH's own LLM channel.
+     */
     model?: string;
     /** Summarization system prompt; `{maxSummaryChars}` is substituted. */
     systemPrompt?: string;
@@ -107,8 +115,7 @@ export declare const Config: Schema<CotSummarizerConfig>;
 export interface ResolvedCotSummarizerConfig {
     enabled: boolean;
     preserveRawForModel: boolean;
-    baseUrl: string;
-    apiKey: string;
+    provider: string;
     model: string;
     systemPrompt: string;
     language: string;

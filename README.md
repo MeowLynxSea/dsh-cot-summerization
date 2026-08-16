@@ -114,9 +114,8 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 | :--- | :--- | :--- |
 | `enabled` | `true` | 总开关,一键回到坦诚世界 |
 | `preserveRawForModel` | `true` | 在模型可见历史中恢复原始思维链(model-only surface 替换事件),Agent Loop 多轮推理不受摘要影响;仅 UI 显示摘要 |
-| `baseUrl` | `https://api.deepseek.com/v1` | 任意 Chat Completions 兼容端点(本地小模型亦可,改写员不必出网) |
-| `apiKey` | `""` | 摘要端点的 API key |
-| `model` | `deepseek-chat` | 改写员型号 |
+| `provider` | `""` | 走 DSH 自身 LLM 通道的提供方路由;留空跟随当前请求的提供方 |
+| `model` | `""` | 走 DSH 自身 LLM 通道的模型;留空跟随当前请求的模型,填写可选用其他模型 |
 | `systemPrompt` | 内置 | 自定义提示词,支持 `{maxSummaryChars}` 占位符 |
 | `language` | `"中文"` | 强制摘要语言;留空则跟随原始思维链 |
 | `style` | `none` | `none` / `concise` / `descriptive` / `wenyan` / `custom` |
@@ -185,7 +184,7 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 <details>
 <summary><b>我的数据会出网吗?</b></summary>
 
-思维链会发送到**你配置的**摘要端点。毕竟,要隐藏一个东西,总得先有人通读一遍——这个道理闭源厂商早就懂了。`baseUrl` 指向本地模型即可完全不出网。
+思维链会通过 DSH 自身的 LLM 通道发送到 **DSH 已配置的**提供方/模型。毕竟,要隐藏一个东西,总得先有人通读一遍——这个道理闭源厂商早就懂了。在 DSH 里把提供方指向本地模型即可完全不出网。
 
 </details>
 

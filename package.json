@@ -88,7 +88,7 @@
       "optional": true
     },
     "@deepseek-ai/dsh-llm": {
-      "optional": true
+      "optional": false
     },
     "@deepseek-ai/dsh-session": {
       "optional": false

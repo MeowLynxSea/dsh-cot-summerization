@@ -16,7 +16,7 @@ import { AdaptiveChunkController, computeAdaptiveChunkChars } from '../lib/adapt
 
 /** A resolved config with the given partial overrides. */
 function cfg(overrides = {}) {
-  return resolveConfig({ baseUrl: 'https://example.test/v1', model: 'mini', apiKey: 'k', ...overrides })
+  return resolveConfig({ model: 'mini', ...overrides })
 }
 
 async function collect(gen) {

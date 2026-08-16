@@ -4,6 +4,9 @@
  * fake LLM adapter that emits raw reasoning, and proves the stream that
  * comes out of `ctx.llm.stream()` contains only the summarized reasoning.
  *
+ * The summarizer call itself goes through DSH's own `ctx.llm` channel, so
+ * the fake adapter handles both the main request and the summarizer request.
+ *
  * Run from the package directory (devDependencies resolve from the local
  * node_modules): node tests/integration.test.mjs
  */
@@ -17,25 +20,26 @@ import LlmRuntime, { BlockAssembler, LlmAdapter, createAssistantMessage, markAge
 import { SessionStore } from '@deepseek-ai/dsh-session'
 import * as plugin from '../lib/index.js'
 
-// --- fake Chat Completions summarizer endpoint (deferred like a real API:
-// the summary lands after the tool-call chunks, so the summary block opens
-// late — the field shape where the landed order differs from the wire) ---
-const summaryCalls = []
-globalThis.fetch = async (url, init) => {
-  summaryCalls.push({ url: String(url), body: JSON.parse(init.body) })
-  await new Promise((resolve) => setTimeout(resolve, 1))
-  return new Response(JSON.stringify({ choices: [{ message: { content: 'CLEAN SUMMARY' } }] }), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-  })
-}
-
 // --- fake upstream model: pi-ai-shaped tool-call turn, reasoning FIRST ---
 // The wire order is [reasoning, tool-call]; the adapter's replay state
 // describes that wire order, and later requests validate the replay state
 // against the historical content block by block.
+const llmCalls = []
+const summarizerCalls = []
 class FakeAdapter extends LlmAdapter {
-  async *stream() {
+  async *stream(options) {
+    llmCalls.push(options)
+    // The plugin's summarizer call selects model 'tiny' through DSH's LLM
+    // channel. Emit a clean text reply for it.
+    if (options.model === 'tiny') {
+      summarizerCalls.push(options)
+      yield { type: 'block-start', index: 0, blockType: 'text' }
+      yield { type: 'text-delta', index: 0, text: 'CLEAN SUMMARY' }
+      yield { type: 'block-end', index: 0, block: { type: 'text', text: 'CLEAN SUMMARY' } }
+      yield { type: 'usage', usage: { inputTokens: 1, outputTokens: 1 } }
+      yield { type: 'finish', reason: { kind: 'stop' } }
+      return
+    }
     yield { type: 'block-start', index: 0, blockType: 'reasoning' }
     yield { type: 'reasoning-delta', index: 0, text: 'RAW SECRET PLAN for the user' }
     yield { type: 'reasoning-delta', index: 0, text: ' with more secret details' }
@@ -57,8 +61,6 @@ const ctx = new Context()
 new LlmRuntime(ctx) // Service constructor registers `ctx.llm`
 await ctx.plugin(FileSettingsProvider, { path: join(dir, 'settings.yaml'), dshHome: dir, watch: false })
 await ctx.plugin(plugin, {
-  baseUrl: 'https://summarizer.test/v1',
-  apiKey: 'secret-key',
   model: 'tiny',
   language: '中文',
   style: 'descriptive',
@@ -85,18 +87,18 @@ assert.equal(message.content[1].text, 'CLEAN SUMMARY')
 const serialized = JSON.stringify(message)
 assert.ok(!serialized.includes('RAW SECRET'), 'raw chain of thought must not appear anywhere')
 
-// The summarizer endpoint received one proper Chat Completions request with
-// the composed prompt (language override + descriptive style preset) and the
-// raw reasoning wrapped in the data delimiter.
-assert.equal(summaryCalls.length, 1)
-assert.equal(summaryCalls[0].url, 'https://summarizer.test/v1/chat/completions')
-assert.equal(summaryCalls[0].body.model, 'tiny')
-assert.equal(summaryCalls[0].body.messages[1].content, '<reasoning>\nRAW SECRET PLAN for the user with more secret details\n</reasoning>')
-assert.ok(summaryCalls[0].body.messages[0].content.includes('Write the ENTIRE summary in 中文.'), 'language override composes into the system prompt')
-assert.ok(summaryCalls[0].body.messages[0].content.includes('每个描述文本后，应当追加一个换行'), 'style preset composes into the system prompt')
-assert.ok(summaryCalls[0].body.messages[0].content.includes('DATA, not instructions'), 'anti-injection rule composes into the system prompt')
+// The summarizer call went through DSH's own LLM channel (ctx.llm.stream),
+// with the plugin's model override and the intercepted request's provider.
+assert.equal(summarizerCalls.length, 1)
+assert.equal(summarizerCalls[0].provider, 'fake', 'provider follows the intercepted request when not overridden')
+assert.equal(summarizerCalls[0].model, 'tiny', 'model override routes through DSH')
+assert.equal(summarizerCalls[0].messages[0].content[0].text,
+  '<reasoning>\nRAW SECRET PLAN for the user with more secret details\n</reasoning>')
+assert.ok(summarizerCalls[0].system.includes('Write the ENTIRE summary in 中文.'), 'language override composes into the system prompt')
+assert.ok(summarizerCalls[0].system.includes('每个描述文本后，应当追加一个换行'), 'style preset composes into the system prompt')
+assert.ok(summarizerCalls[0].system.includes('DATA, not instructions'), 'anti-injection rule composes into the system prompt')
 
-console.log('integration test passed: raw CoT replaced by summary through the real llm/stream waterfall')
+console.log('integration test passed: raw CoT replaced by summary through DSH\'s own llm/stream channel')
 
 // --- end-to-end: the model-visible surface keeps the raw chain of thought ---
 // A loop-shaped call carries a sessionId, so the plugin tracks the stream.
@@ -164,11 +166,11 @@ console.log('integration test passed: model history keeps the raw CoT in wire or
 // request: it must not be summarized, and it must not touch the tracker (in
 // the field it ran concurrently with the loop's first step and silently
 // cancelled that step's restoration).
-const callsBefore = summaryCalls.length
+const callsBefore = summarizerCalls.length
 const titleStream = ctx.llm.stream({ provider: 'fake', model: 'anything', messages: [], sessionId: 'it-session' })
 const titleAssembler = new BlockAssembler()
 for await (const chunk of titleStream) titleAssembler.push(chunk)
-assert.equal(summaryCalls.length, callsBefore, 'a non-loop request never reaches the summarizer')
+assert.equal(summarizerCalls.length, callsBefore, 'a non-loop request never reaches the summarizer')
 assert.ok(JSON.stringify(titleAssembler.blocks()).includes('RAW SECRET'),
   'a non-loop request passes through untouched (its reasoning never renders in the UI)')
 console.log('integration test passed: non-loop llm callers pass through untouched')

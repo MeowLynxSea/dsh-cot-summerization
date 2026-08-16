@@ -60,7 +60,7 @@ export const name = 'dsh-cot-summerization'
 
 export { Config }
 
-export const inject = ['settings']
+export const inject = ['settings', 'llm']
 
 /** Placeholder reasoning text shown when summarization fails under `hide`. */
 export const UNAVAILABLE_PLACEHOLDER = '[CoT summary unavailable]'
@@ -601,7 +601,16 @@ export function apply(ctx: Context, config: CotSummarizerConfig = {}): () => voi
       capture = createRawCapture()
       restorer.track(String(options.sessionId), capture)
     }
-    yield* transformCoTStream(next(), cfg, summarizeCoT, options.signal, (message, ...args) => {
+    // Route the summarizer through DSH's own LLM channel. The provider/model
+    // come from the plugin settings when set, otherwise they follow the
+    // intercepted request's provider/model — so credentials and provider
+    // configuration stay unified with DSH, and other plugins see the call.
+    const summarize: SummarizeFn = (raw, resolvedCfg, signal, summarizeOptions) => {
+      const provider = resolvedCfg.provider !== '' ? resolvedCfg.provider : options.provider
+      const model = resolvedCfg.model !== '' ? resolvedCfg.model : options.model
+      return summarizeCoT(raw, resolvedCfg, ctx.llm, provider, model, signal, summarizeOptions)
+    }
+    yield* transformCoTStream(next(), cfg, summarize, options.signal, (message, ...args) => {
       ctx.logger.warn(message, ...args)
     }, capture)
   })
