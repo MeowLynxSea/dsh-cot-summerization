@@ -44,12 +44,13 @@ const en: Record<string, string> = {
   modelHint: 'Model used through DSH\'s LLM channel. Choose "Current model" to follow the model of the current request, or pick another model.',
   modelCurrent: 'Current model',
   modelOptionsFailed: 'Failed to load model options.',
-  systemPrompt: 'Summarization prompt',
-  systemPromptHint: 'Override the default prompt. {maxSummaryChars} is substituted with the cap below.',
-  language: 'Summary language',
-  languageHint: 'Force the summary language (e.g. 中文, English). Leave blank to follow the raw reasoning\'s language.',
-  style: 'Summary style',
-  styleNone: 'Default (no style)',
+  systemPrompt: 'Rewrite prompt',
+  systemPromptHint: 'Override the prompt used to rewrite the raw reasoning. {maxSummaryChars} is substituted with the cap below.',
+  language: 'Output language',
+  languageHint: 'Force the language of the condensed chain of thought (e.g. 中文, English). Leave blank to follow the raw reasoning\'s language.',
+  style: 'Thinking style',
+  styleNone: 'Base (no extra style)',
+  styleNative: 'Native (first-person thinking)',
   styleConcise: 'Concise & abstract',
   styleDescriptive: 'Descriptive (title + details)',
   styleWenyan: 'Classical Chinese (文言文)',
@@ -104,12 +105,13 @@ const zh: Record<string, string> = {
   modelHint: '通过 DSH 的 LLM 通道使用的模型。选择“当前模型”则跟随当前请求的模型，也可选择其他模型。',
   modelCurrent: '当前模型',
   modelOptionsFailed: '模型选项加载失败。',
-  systemPrompt: '总结提示词',
-  systemPromptHint: '覆盖默认提示词。{maxSummaryChars} 会被替换为下方的长度上限。',
-  language: '总结语言',
-  languageHint: '强制摘要使用的语言（如：中文、English）。留空则跟随原始推理的语言。',
-  style: '总结风格',
-  styleNone: '默认（无风格）',
+  systemPrompt: '重写提示词',
+  systemPromptHint: '覆盖用于重写原始推理的默认提示词。{maxSummaryChars} 会被替换为下方的长度上限。',
+  language: '输出语言',
+  languageHint: '强制缩略思维链使用的语言（如：中文、English）。留空则跟随原始推理的语言。',
+  style: '思维链风格',
+  styleNone: '基础（无额外风格）',
+  styleNative: '原生（第一人称思考过程）',
   styleConcise: '简洁（高度抽象）',
   styleDescriptive: '描述型（标题+说明）',
   styleWenyan: '文言',
@@ -404,10 +406,11 @@ function SettingsSection({ t }: SettingsSectionProps) {
         </Field>
         <Field label={t('style')}>
           <select
-            value={draft.style ?? 'none'}
+            value={draft.style ?? 'native'}
             onChange={(event) => { set('style', event.target.value) }}
           >
             <option value="none">{t('styleNone')}</option>
+            <option value="native">{t('styleNative')}</option>
             <option value="concise">{t('styleConcise')}</option>
             <option value="descriptive">{t('styleDescriptive')}</option>
             <option value="wenyan">{t('styleWenyan')}</option>

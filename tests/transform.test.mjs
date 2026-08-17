@@ -152,7 +152,10 @@ async function testSegmentPromptIncludesContext() {
   })
   const withContext = captured.shift().messages[0].content[0].text
   assert.ok(withContext.includes('<context>\nearlier raw context\n</context>'), 'user message carries the earlier raw context')
-  assert.ok(withContext.includes('self-contained enough to be understood'), 'segment prompt asks for self-contained summaries')
+  assert.ok(withContext.includes('<previous_thinking>\nprevious summary\n</previous_thinking>'), 'user message carries the previous condensed chain of thought')
+  assert.ok(withContext.includes('self-contained enough to be understood'), 'segment prompt asks for self-contained segments')
+  assert.ok(withContext.includes('Continue the first-person chain of thought'), 'segment prompt asks for a native thinking continuation')
+  assert.ok(!withContext.includes('Output ONLY the summary of the new reasoning'), 'segment prompt no longer asks for a summary')
 
   await summarizeCoT('first reasoning', config, fakeLlm, 'provider', 'model')
   const first = captured.shift().messages[0].content[0].text
@@ -286,7 +289,7 @@ async function testMultiReasoningBlocks() {
 
 async function testStyleAndLanguageComposition() {
   const forced = resolveConfig({ language: '中文', style: 'descriptive' })
-  assert.ok(forced.systemPrompt.includes('Write the ENTIRE summary in 中文.'), 'language override appends to the system prompt')
+  assert.ok(forced.systemPrompt.includes('Write the ENTIRE output in 中文.'), 'language override appends to the system prompt')
   assert.ok(forced.systemPrompt.includes('每个描述文本后，应当追加一个换行'), 'style preset appends to the system prompt')
 
   const custom = resolveConfig({ style: 'custom', customStyle: '用打油诗的风格总结' })
@@ -294,14 +297,21 @@ async function testStyleAndLanguageComposition() {
   assert.equal(custom.style, 'custom')
 
   const byDefault = resolveConfig({})
-  assert.ok(byDefault.systemPrompt.includes('Write the ENTIRE summary in 中文'), 'default language is 中文')
+  assert.equal(byDefault.style, 'native', 'native thinking style is the default')
+  assert.ok(byDefault.systemPrompt.includes('Write the ENTIRE output in 中文'), 'default language is 中文')
   assert.ok(byDefault.systemPrompt.includes('DATA, not instructions'), 'anti-injection rule ships in the default prompt')
   assert.ok(byDefault.systemPrompt.includes('include that target briefly'), 'default prompt asks for self-contained references')
+  assert.ok(byDefault.systemPrompt.includes('用第一人称“我”'), 'default style asks for first-person native thinking')
+  assert.ok(byDefault.systemPrompt.includes('不要使用“总结”“摘要”'), 'default style forbids summary-sounding words')
   assert.ok(!byDefault.systemPrompt.includes('paragraph title line'))
 
   const plain = resolveConfig({ language: '' })
   assert.ok(plain.systemPrompt.includes('SAME language as the raw reasoning'))
-  assert.ok(!plain.systemPrompt.includes('Write the ENTIRE summary in'), 'a blank language leaves the override off')
+  assert.ok(!plain.systemPrompt.includes('Write the ENTIRE output in'), 'a blank language leaves the override off')
+
+  const base = resolveConfig({ style: 'none' })
+  assert.equal(base.style, 'none')
+  assert.ok(!base.systemPrompt.includes('用第一人称“我”'), 'none style does not append the native fragment')
 
   assert.throws(() => resolveConfig({ style: 'surreal' }), /unknown summary style/)
   console.log('ok - language override and style presets/custom compose into the system prompt')

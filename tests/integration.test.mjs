@@ -94,7 +94,7 @@ assert.equal(summarizerCalls[0].provider, 'fake', 'provider follows the intercep
 assert.equal(summarizerCalls[0].model, 'tiny', 'model override routes through DSH')
 assert.equal(summarizerCalls[0].messages[0].content[0].text,
   '<reasoning>\nRAW SECRET PLAN for the user with more secret details\n</reasoning>')
-assert.ok(summarizerCalls[0].system.includes('Write the ENTIRE summary in 中文.'), 'language override composes into the system prompt')
+assert.ok(summarizerCalls[0].system.includes('Write the ENTIRE output in 中文.'), 'language override composes into the system prompt')
 assert.ok(summarizerCalls[0].system.includes('每个描述文本后，应当追加一个换行'), 'style preset composes into the system prompt')
 assert.ok(summarizerCalls[0].system.includes('DATA, not instructions'), 'anti-injection rule composes into the system prompt')
 

@@ -10,7 +10,7 @@
 ![Tests](https://img.shields.io/badge/tests-%E9%80%9A%E8%BF%87%E8%BF%87%E4%B8%80%E6%AC%A1-success)
 ![License](https://img.shields.io/badge/license-MIT(%E7%BB%88%E4%BA%8E%E5%BC%80%E6%BA%90%E4%BA%86%E4%B8%80%E6%A0%B7%E4%B8%9C%E8%A5%BF)-orange)
 
-**DeepSeek Harness 插件:把模型的原始思维链拦截在半空,改写成一份体面的摘要再端给你。**
+**DeepSeek Harness 插件:把模型的原始思维链拦截在半空,改写成一条像原生思考的缩略思维链再端给你。**
 
 闭源模型花钱隐藏思维链,开源模型免费全裸。
 我们识别出了开源生态最后一块体验短板,并亲手为它补上——
@@ -116,9 +116,9 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 | `preserveRawForModel` | `true` | 在模型可见历史中恢复原始思维链(model-only surface 替换事件),Agent Loop 多轮推理不受摘要影响;仅 UI 显示摘要 |
 | `provider` | `""` | 走 DSH 自身 LLM 通道的提供方路由;留空跟随当前请求的提供方 |
 | `model` | `""` | 走 DSH 自身 LLM 通道的模型;留空跟随当前请求的模型,填写可选用其他模型 |
-| `systemPrompt` | 内置 | 自定义提示词,支持 `{maxSummaryChars}` 占位符 |
-| `language` | `"中文"` | 强制摘要语言;留空则跟随原始思维链 |
-| `style` | `none` | `none` / `concise` / `descriptive` / `wenyan` / `custom` |
+| `systemPrompt` | 内置 | 重写提示词,支持 `{maxSummaryChars}` 占位符 |
+| `language` | `"中文"` | 强制缩略思维链语言;留空则跟随原始思维链 |
+| `style` | `native` | `native` / `none` / `concise` / `descriptive` / `wenyan` / `custom`;默认 `native` 以第一人称“正在思考”的口吻输出,看起来像原生思维链而不是总结 |
 | `customStyle` | `""` | `style: custom` 时的自由文本风格 |
 | `minReasoningChars` | `32` | 短于此长度的思维链原文放行,不值得一次 API |
 | `maxSummaryChars` | `50` | 摘要长度上限 |
