@@ -155,6 +155,8 @@ async function testSegmentPromptIncludesContext() {
   assert.ok(withContext.includes('<previous_thinking>\nprevious summary\n</previous_thinking>'), 'user message carries the previous condensed chain of thought')
   assert.ok(withContext.includes('self-contained enough to be understood'), 'segment prompt asks for self-contained segments')
   assert.ok(withContext.includes('Continue the first-person chain of thought'), 'segment prompt asks for a native thinking continuation')
+  assert.ok(withContext.includes('Vary punctuation and sentence openings naturally'), 'segment prompt asks for natural punctuation and sentence openings')
+  assert.ok(withContext.includes('Do not output the delimiters <reasoning>'), 'segment prompt forbids echoing the reasoning delimiters')
   assert.ok(!withContext.includes('Output ONLY the summary of the new reasoning'), 'segment prompt no longer asks for a summary')
 
   await summarizeCoT('first reasoning', config, fakeLlm, 'provider', 'model')
@@ -303,6 +305,11 @@ async function testStyleAndLanguageComposition() {
   assert.ok(byDefault.systemPrompt.includes('include that target briefly'), 'default prompt asks for self-contained references')
   assert.ok(byDefault.systemPrompt.includes('用第一人称“我”'), 'default style asks for first-person native thinking')
   assert.ok(byDefault.systemPrompt.includes('不要使用“总结”“摘要”'), 'default style forbids summary-sounding words')
+  assert.ok(byDefault.systemPrompt.includes('不要每个分句都用句号'), 'default style forbids ending every clause with a period')
+  assert.ok(byDefault.systemPrompt.includes('不要每句都以“我”开头'), 'default style forbids starting every sentence with 我')
+  assert.ok(byDefault.systemPrompt.includes('Vary punctuation and sentence openings naturally'), 'base prompt asks for varied punctuation and sentence openings')
+  assert.ok(byDefault.systemPrompt.includes('Do not output the delimiters <reasoning>'), 'base prompt forbids echoing the reasoning delimiters')
+  assert.ok(!byDefault.systemPrompt.includes('每个分句均以句号结尾'), 'the all-period requirement is gone')
   assert.ok(!byDefault.systemPrompt.includes('paragraph title line'))
 
   const plain = resolveConfig({ language: '' })
