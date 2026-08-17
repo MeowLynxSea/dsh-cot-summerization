@@ -355,6 +355,7 @@ async function testStyleAndLanguageComposition() {
   assert.ok(byDefault.systemPrompt.includes('用第一人称“我”'), 'default style asks for first-person native thinking')
   assert.ok(byDefault.systemPrompt.includes('不要使用“总结”“摘要”'), 'default style forbids summary-sounding words')
   assert.ok(byDefault.systemPrompt.includes('不要每个分句都用句号'), 'default style forbids ending every clause with a period')
+  assert.ok(byDefault.systemPrompt.includes('整段输出必须以句号、问号、感叹号或省略号等标点符号结尾'), 'native style requires the whole output to end with punctuation')
   assert.ok(byDefault.systemPrompt.includes('不要每句都以“我”开头'), 'default style forbids starting every sentence with 我')
   assert.ok(byDefault.systemPrompt.includes('Vary punctuation and sentence openings naturally'), 'base prompt asks for varied punctuation and sentence openings')
   assert.ok(byDefault.systemPrompt.includes('Do not output the delimiters <reasoning>'), 'base prompt forbids echoing the reasoning delimiters')
