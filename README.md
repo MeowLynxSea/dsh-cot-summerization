@@ -116,7 +116,7 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 | `preserveRawForModel` | `true` | 在模型可见历史中恢复原始思维链(model-only surface 替换事件),Agent Loop 多轮推理不受摘要影响;仅 UI 显示摘要 |
 | `provider` | `""` | 走 DSH 自身 LLM 通道的提供方路由;留空跟随当前请求的提供方 |
 | `model` | `""` | 走 DSH 自身 LLM 通道的模型;留空跟随当前请求的模型,填写可选用其他模型 |
-| `systemPrompt` | 内置 | 重写提示词,支持 `{maxSummaryChars}` 占位符 |
+| `systemPrompt` | 内置 | 重写提示词,支持 `{maxSummaryChars}` 占位符;防注入安全规则始终追加在最后 |
 | `language` | `"中文"` | 强制缩略思维链语言;留空则跟随原始思维链 |
 | `style` | `native` | `native` / `none` / `concise` / `descriptive` / `wenyan` / `custom`;默认 `native` 以第一人称“正在思考”的口吻输出,看起来像原生思维链而不是总结 |
 | `customStyle` | `""` | `style: custom` 时的自由文本风格 |
@@ -137,6 +137,9 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 
 - 无 reasoning 的流(非思考模型)原样通过,插件不作任何干预。
 - 每次分段摘要只处理**新到达**的段落,之前的摘要与最近一段原始推理会作为上下文传入以保持连贯、消解指代,但不重复输出。
+- 防注入:原始推理(以及上下文、前序摘要)先做 XML 转义再放入 `<reasoning>` / `<context>` / `<previous_thinking>` 数据区,无法用 `</reasoning>` 逃逸;系统提示词末尾强制追加最高优先级安全规则(即使自定义 `systemPrompt`),原生第一人称风格同样不能把推理内容当成指令。
+- 结构化输出:改写员必须输出 `{"summary":"..."}` JSON;插件按 schema 解析,不符合 schema 的杂讯(如 `<60字符`、围栏外文字、纯文本)会被丢弃。
+- 回显防护覆盖短段落(≥ 24 字符):近逐字回显原始推理的摘要会被丢弃,短原文回显同样是泄露。
 - 去重逻辑:bigram 相似度 ≥ 0.65,或最长公共子串覆盖核心短语的复述句,会被从段落结果中剔除。
 - 主调用中止时摘要请求同步中止,且受 `timeoutMs` 约束。
 - `adaptiveChunk` 开启时,有效分块大小 = `clamp(流速率 × 总结器RTT × chunkSafetyFactor, minChunkChars, maxChunkChars)`,其中流速率与 RTT 均使用 EWMA 平滑。

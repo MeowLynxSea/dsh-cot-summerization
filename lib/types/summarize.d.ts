@@ -16,6 +16,28 @@ export declare class SummarizeError extends Error {
 export interface DshLlmLike {
     stream(options: GenerateOptions): AsyncIterable<StreamChunk>;
 }
+/**
+ * Neutralize delimiter breakout for untrusted text inserted between fixed
+ * XML-style tags. After escaping, no inserted content can close the
+ * `<reasoning>` tag, open a fake instruction tag, or forge an entity, so
+ * instruction-like text inside the raw chain of thought stays inside the
+ * data region no matter what it contains.
+ */
+export declare function escapeDelimitedText(text: string): string;
+/**
+ * Extract the `summary` string from a summarizer reply. The prompt asks for
+ * `{"summary":"..."}`; small models sometimes add markdown fences, preamble,
+ * or trailing prose. Accepted forms, in order:
+ *   1. the whole reply is a JSON object with a string `summary`;
+ *   2. the reply is a fenced JSON code block;
+ *   3. one JSON object embedded in surrounding text (first `{` to last `}`);
+ *   4. a tolerant `"summary": "..."` string-literal scan (allows unescaped
+ *      newlines inside the value).
+ * Everything else is rejected with a {@link SummarizeError}: if the model did
+ * not produce schema-shaped output, the segment is skipped rather than
+ * letting meta text ("<60字符", prose, echo) reach the UI.
+ */
+export declare function parseSummaryPayload(result: string): string;
 /** Options for one summarizer call beyond the raw text itself. */
 export interface SummarizeOptions {
     /**
