@@ -31,10 +31,14 @@ export default {
   dts: false,
   clean: false,
   sourcemap: false,
-  external: [...CLIENT_EXTERNALS],
-  // Anything not in the loader module table inlines (type-only imports were
-  // already erased by tsc, so only runtime values reach this rule).
-  noExternal: (id: string): boolean | undefined => (CLIENT_EXTERNALS.includes(id) ? undefined : true),
+  deps: {
+    // The loader module table's shared modules resolve through that table and
+    // must never be inlined into the bundle.
+    neverBundle: [...CLIENT_EXTERNALS],
+    // Anything not in the loader module table inlines (type-only imports were
+    // already erased by tsc, so only runtime values reach this rule).
+    alwaysBundle: (id: string): boolean => !CLIENT_EXTERNALS.includes(id),
+  },
   define: {
     'process.env.NODE_ENV': JSON.stringify('production'),
   },

@@ -210,14 +210,21 @@ interface SettingsInjected {
 
 type SettingsSectionProps = PropsRuntime<'settings.section'> & SettingsInjected
 
-/** One labeled form row. */
+/**
+ * One labeled form row. Rendered as a `<div>` (not `<label>`) because the
+ * children may include another interactive `<label>` (the Switch). Nested
+ * `<label>`s are invalid HTML: the outer label would hijack clicks aimed at
+ * the switch and could toggle twice or behave unpredictably. Form controls
+ * are already self-describing, and the label text is a sibling rather than
+ * an associated control.
+ */
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <label className="dshc-field">
+    <div className="dshc-field">
       <span className="dshc-field-label">{label}</span>
       {children}
       {hint !== undefined && <span className="dshc-field-hint">{hint}</span>}
-    </label>
+    </div>
   )
 }
 
