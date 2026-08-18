@@ -69,6 +69,25 @@ test('streamReasoningBlock and reasoningBlockWaitMs have settings UI controls', 
     'the wait input renders only while streamReasoningBlock is on')
 })
 
+test('edits autosave via a dirty flag and a debounce, with no manual save button', () => {
+  // The page saves on its own: a draft change must flip a dirty flag that a
+  // debounced timer flushes — and there must be no Save button left to click.
+  assert.match(source, /useEffect\(\(\) => \{[^]*?\}\s*,\s*\[draft, ready\]\)/,
+    'an effect keyed on [draft, ready] must drive the autosave')
+  assert.match(source, /state\.dirty = true/, 'a draft change must mark the autosave dirty')
+  assert.match(source, /state\.debounce = setTimeout\(/, 'the autosave must debounce the flush')
+  assert.doesNotMatch(source, /<button\b/, 'there must be no manual save <button>')
+  assert.doesNotMatch(source, /<button/, 'there must be no manual save button at all')
+})
+
+test('only one save request is in flight at a time', () => {
+  // flushSave must guard re-entry so rapid edits cannot overlap POSTs.
+  const flushStart = source.indexOf('const flushSave')
+  assert.ok(flushStart >= 0, 'flushSave exists')
+  const flushBody = source.slice(flushStart, source.indexOf('\n  }\n', flushStart))
+  assert.match(flushBody, /if \(state\.savingNow\) return/, 'flushSave must bail out while a save is in flight')
+})
+
 function test(name, fn) {
   try {
     fn()

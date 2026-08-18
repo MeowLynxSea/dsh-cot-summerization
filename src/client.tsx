@@ -88,9 +88,9 @@ const en: Record<string, string> = {
   onErrorHide: 'Hide reasoning',
   onErrorPassThrough: 'Pass raw reasoning through',
   onErrorDrop: 'Show nothing at all',
-  save: 'Save',
   saving: 'Saving…',
   saved: 'Saved',
+  savePending: 'Pending…',
   loading: 'Loading…',
   unavailable: 'Settings are unavailable.',
   failed: 'Failed to save:',
@@ -154,9 +154,9 @@ const zh: Record<string, string> = {
   onErrorHide: '隐藏思维链（显示占位符）',
   onErrorPassThrough: '展示原始思维链',
   onErrorDrop: '悄无声息（什么都不显示）',
-  save: '保存',
   saving: '保存中…',
   saved: '已保存',
+  savePending: '待保存…',
   loading: '加载中…',
   unavailable: '设置不可用。',
   failed: '保存失败：',
@@ -266,23 +266,60 @@ function Switch({ checked, onChange }: { checked: boolean; onChange: (checked: b
   )
 }
 
-/** The plugin's settings page, served by the host route. */
+/** Debounce before an edit batch is POSTed; feels instant, coalesces typing. */
+const AUTOSAVE_DEBOUNCE_MS = 600
+/** How long the "Saved" indicator lingers before fading back. */
+const SAVED_FEEDBACK_MS = 2000
+
+type SaveStatus = 'idle' | 'pending' | 'saving'
+
+/** The plugin's settings page: edits autosave shortly after the user stops changing fields. */
 function SettingsSection({ t }: SettingsSectionProps) {
-  const [view, setView] = useState<SettingsView>()
+  const [ready, setReady] = useState(false)
   const [error, setError] = useState<string>()
   const [draft, setDraft] = useState<CotSummarizerConfig>({})
   const [modelOptions, setModelOptions] = useState<CotSummarizerModelOptions>()
   const [modelOptionsError, setModelOptionsError] = useState<string>()
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const savedTimer = useRef<ReturnType<typeof setTimeout>>()
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const [showSaved, setShowSaved] = useState(false)
+
+  /**
+   * Autosave coordinator. Lives in a ref because a save callback must always
+   * act on the latest draft and host-side revision, not those captured when
+   * the timer was scheduled:
+   *
+   * - `revision` — revision the next POST will claim as expected, advanced
+   *   from every successful response.
+   * - `dirty` / `savingNow` — one in-flight POST at a time; edits that
+   *   arrive mid-flight mark `dirty` and are flushed by a follow-up save.
+   * - `debounce` — batches rapid edits (number stepping, typing) into one
+   *   POST, but immediate edits supersede it via the dirty follow-up.
+   */
+  const autosave = useRef({
+    revision: 0,
+    dirty: false,
+    savingNow: false,
+    debounce: undefined as ReturnType<typeof setTimeout> | undefined,
+    savedTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+  })
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+
+  useEffect(() => {
+    const state = autosave.current
+    return () => {
+      if (state.debounce !== undefined) clearTimeout(state.debounce)
+      if (state.savedTimer !== undefined) clearTimeout(state.savedTimer)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     void fetchView().then((next) => {
       if (cancelled) return
-      setView(next)
+      autosave.current.revision = next.revision
       setDraft(next.settings)
+      setReady(true)
     }).catch((reason: unknown) => {
       if (cancelled) return
       setError(reason instanceof Error ? reason.message : String(reason))
@@ -302,32 +339,55 @@ function SettingsSection({ t }: SettingsSectionProps) {
     return () => { cancelled = true }
   }, [])
 
-  useEffect(() => () => { if (savedTimer.current !== undefined) clearTimeout(savedTimer.current) }, [])
+  useEffect(() => {
+    // Skips the initial mount and the setDraft that accompanies the first
+    // fetch; only user edits flip the draft afterwards.
+    if (!ready) return
+    const state = autosave.current
+    state.dirty = true
+    setSaveStatus('pending')
+    setShowSaved(false)
+    if (state.savedTimer !== undefined) clearTimeout(state.savedTimer)
+    if (state.debounce !== undefined) clearTimeout(state.debounce)
+    state.debounce = setTimeout(() => {
+      state.debounce = undefined
+      flushSave()
+    }, AUTOSAVE_DEBOUNCE_MS)
+  }, [draft, ready])
 
-  if (view === undefined) {
+  const flushSave = (): void => {
+    const state = autosave.current
+    if (state.savingNow) return
+    state.savingNow = true
+    setSaveStatus('saving')
+    void saveView(state.revision, { ...draftRef.current }).then((next) => {
+      state.savingNow = false
+      state.revision = next.revision
+      if (state.dirty) {
+        // Edits landed mid-flight: immediately save the newer draft
+        // (debouncing here too would stall rapid toggles until idle).
+        state.dirty = false
+        flushSave()
+      } else {
+        setSaveStatus('idle')
+        setShowSaved(true)
+        if (state.savedTimer !== undefined) clearTimeout(state.savedTimer)
+        state.savedTimer = setTimeout(() => { setShowSaved(false) }, SAVED_FEEDBACK_MS)
+      }
+    }).catch((reason: unknown) => {
+      state.savingNow = false
+      setSaveStatus('idle')
+      setError(reason instanceof Error ? reason.message : String(reason))
+    })
+  }
+
+  if (!ready) {
     return <p>{error !== undefined ? `${t('unavailable')} ${error}` : t('loading')}</p>
   }
 
   const set = (field: keyof CotSummarizerConfig, value: unknown): void => {
+    // The autosave useEffect on `draft` picks this edit up (dirty + debounce).
     setDraft((previous) => ({ ...previous, [field]: value }))
-    setSaved(false)
-  }
-
-  const save = (): void => {
-    setSaving(true)
-    setError(undefined)
-    const value: Record<string, unknown> = { ...draft }
-    void saveView(view.revision, value).then((next) => {
-      setView(next)
-      setDraft(next.settings)
-      setSaving(false)
-      setSaved(true)
-      if (savedTimer.current !== undefined) clearTimeout(savedTimer.current)
-      savedTimer.current = setTimeout(() => { setSaved(false) }, 2000)
-    }).catch((reason: unknown) => {
-      setSaving(false)
-      setError(reason instanceof Error ? reason.message : String(reason))
-    })
   }
 
   const selectedProvider = draft.provider ?? ''
@@ -396,7 +456,6 @@ function SettingsSection({ t }: SettingsSectionProps) {
                 }
                 return next
               })
-              setSaved(false)
             }}
           >
             <option value="">{t('providerCurrent')}</option>
@@ -587,10 +646,9 @@ function SettingsSection({ t }: SettingsSectionProps) {
         </Field>
       </div>
       <div className="dshc-actions">
-        <button type="button" className="dshc-save" disabled={saving} onClick={save}>
-          {saving ? t('saving') : t('save')}
-        </button>
-        {saved && <span className="dshc-saved">{t('saved')}</span>}
+        {saveStatus !== 'idle'
+          ? <span className="dshc-status">{saveStatus === 'saving' ? t('saving') : t('savePending')}</span>
+          : showSaved && <span className="dshc-saved">{t('saved')}</span>}
         {error !== undefined && <span className="dshc-error">{t('failed')} {error}</span>}
       </div>
     </section>
@@ -628,10 +686,8 @@ const STYLES = `
 .dshc-switch input:checked + .dshc-switch-track::after { transform: translateX(16px); }
 .dshc-switch input:focus-visible + .dshc-switch-track { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
 .dshc-field-hint { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 1.5; }
-.dshc-actions { display: flex; align-items: center; gap: 12px; margin-top: 24px; }
-.dshc-save { padding: 8px 18px; border: 0; border-radius: 8px; background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground); font: inherit; font-size: 13px; cursor: pointer; }
-.dshc-save:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }
-.dshc-save:disabled { opacity: 0.6; cursor: default; }
+.dshc-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; height: 18px; margin-top: 20px; }
+.dshc-status { color: var(--dsw-alias-label-secondary); font-size: 12px; }
 .dshc-saved { color: var(--dsw-alias-state-success-primary); font-size: 12px; }
 .dshc-error { color: var(--dsw-alias-state-error-primary); font-size: 12px; }
 `
