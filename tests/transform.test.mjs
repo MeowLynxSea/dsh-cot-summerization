@@ -654,6 +654,46 @@ async function testDropKeepsLandedSegmentsOnly() {
   console.log('ok - drop keeps landed segments and drops the missed tail without a placeholder')
 }
 
+async function testPassThroughKeepsLandedSegments() {
+  // Regression: under pass-through, a closing segment call that misses its
+  // wait window must NOT replace the already-streamed partial summary with
+  // the full raw chain — the user watched the summary grow; flashing the
+  // raw reasoning over it erases landed work and leaks what they already
+  // saw summarized. Only a never-summarized block backfills with the raw.
+  const upstream = [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    { type: 'reasoning-delta', index: 0, text: sentence(0) },
+    { type: 'reasoning-delta', index: 0, text: sentence(1) },
+    { type: 'reasoning-delta', index: 0, text: sentence(2) },
+    { type: 'reasoning-delta', index: 0, text: sentence(3) },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'raw' } },
+    { type: 'block-start', index: 1, blockType: 'text' },
+    { type: 'text-delta', index: 1, text: 'Reply.' },
+    { type: 'block-end', index: 1, block: { type: 'text', text: 'Reply.' } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ]
+  let call = 0
+  const summarize = async () => {
+    call += 1
+    // The first (midstream, fire-and-forget) segment lands immediately; the
+    // closing segment misses its wait window.
+    if (call === 1) return '先分析了问题。'
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+    return '迟到的尾巴。'
+  }
+  const out = await collect(transformCoTStream(upstream,
+    cfg({ minReasoningChars: 10, chunkChars: 60, reasoningBlockWaitMs: 30, onError: 'pass-through' }), summarize))
+  const { blocks } = assemble(out)
+  assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'text'],
+    'the Think row stays above the reply')
+  assert.equal(blocks[0].text, '先分析了问题。',
+    'the landed summary stays — the raw chain does NOT replace it')
+  const json = JSON.stringify(out)
+  assert.ok(!json.includes('SECRET'), 'the raw reasoning never leaks into the stream')
+  assert.ok(!json.includes('迟到的尾巴'), 'the missed closing segment is dropped')
+  console.log('ok - pass-through keeps the landed summary when the closing segment misses its window')
+}
+
 async function testStreamReasoningBlockDisabledKeepsLegacyBehavior() {
   // streamReasoningBlock: false restores the pre-fix streaming semantics:
   // a slow summary trails the reply, for users who prefer zero reply delay
@@ -790,6 +830,7 @@ await testStreamReasoningBlockDeadlinePassThroughShowsRaw()
 await testStreamReasoningBlockDeadlineDropShowsNothing()
 await testDropFailureShowsNothing()
 await testDropKeepsLandedSegmentsOnly()
+await testPassThroughKeepsLandedSegments()
 await testStreamReasoningBlockDisabledKeepsLegacyBehavior()
 await testTypewriterPacesCharacters()
 await testTypewriterKeepsCodePointsWhole()
