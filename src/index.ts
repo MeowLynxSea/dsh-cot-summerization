@@ -421,10 +421,12 @@ export async function* transformCoTStream(
    *
    * When the call has not settled by the deadline the block is closed
    * immediately with the assembled text (full raw under `pass-through`, the
-   * placeholder — or the pending summary when it lands in time — under
-   * `hide`). Late segment results are then DROPPED, which strictly dominates
-   * the previous behavior of emitting them above the landed message at stream
-   * end. Everything produced by this helper stays in correct stream order —
+   * placeholder under `hide`, whatever already streamed under `drop`). A
+   * `drop` close with nothing emitted skips the Think row entirely — the
+   * block never opens. Late segment results are DROPPED either way, which
+   * strictly dominates the previous behavior of emitting them above the
+   * landed message at stream end. Everything produced by this helper stays
+   * in correct stream order —
    * as in-order consumers expect — so no recovery emission rides the finish.
    */
   function assembleReasoningEnd(): string {
@@ -433,6 +435,7 @@ export async function* transformCoTStream(
       const trimmed = rawCoT.trim()
       if (trimmed !== '') return trimmed
     }
+    if (cfg.onError === 'drop') return emitted
     return emitted === '' ? UNAVAILABLE_PLACEHOLDER : emitted
   }
 
@@ -458,16 +461,21 @@ export async function* transformCoTStream(
       }
     }
     yield* drainQueue()
-    if (!summaryStarted) {
-      summaryStarted = true
-      yield { type: 'block-start', index: blockIndex(), blockType: 'reasoning' }
-    }
     // Deliver whatever the final block text adds beyond the already-drained
     // queue (the placeholder under `hide`, the raw reasoning under
     // `pass-through`): a streaming consumer must SEE the fallback even
     // though it only materializes at close time. Still ahead of the reply
-    // and the finish chunk, so the live order stays intact.
+    // and the finish chunk, so the live order stays intact. Under `drop`
+    // with nothing emitted there is nothing to show: no Think row at all.
     const endText = assembleReasoningEnd()
+    if (endText === '' && !summaryStarted) {
+      summaryClosed = true
+      return
+    }
+    if (!summaryStarted) {
+      summaryStarted = true
+      yield { type: 'block-start', index: blockIndex(), blockType: 'reasoning' }
+    }
     if (endText !== emitted) {
       const tail = endText.startsWith(emitted) ? endText.slice(emitted.length) : endText
       if (tail !== '') yield { type: 'reasoning-delta', index: blockIndex(), text: tail }
@@ -722,10 +730,11 @@ export async function* transformCoTStream(
           }
           if (emitted === '' && !rawShown && !summaryClosed && trimmed.length >= cfg.minReasoningChars) {
             // Every summarizer call failed and nothing was shown yet: apply
-            // the configured failure policy.
+            // the configured failure policy. Under `drop` the Think row
+            // stays closed — nothing is shown at all.
             if (cfg.onError === 'pass-through') {
               yield* emitRawReasoning(trimmed)
-            } else {
+            } else if (cfg.onError !== 'drop') {
               enqueue(UNAVAILABLE_PLACEHOLDER)
             }
           }

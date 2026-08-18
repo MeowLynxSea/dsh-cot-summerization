@@ -571,6 +571,89 @@ async function testStreamReasoningBlockDeadlinePassThroughShowsRaw() {
   console.log('ok - pass-through degrades a missed window to the raw reasoning, in place')
 }
 
+async function testStreamReasoningBlockDeadlineDropShowsNothing() {
+  // Under onError: drop, a missed window shows NOTHING: no placeholder, no
+  // raw reasoning, no Think row at all when nothing was ever emitted.
+  const upstream = [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    { type: 'reasoning-delta', index: 0, text: sentence(0) },
+    { type: 'reasoning-delta', index: 0, text: sentence(1) },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'raw' } },
+    { type: 'block-start', index: 1, blockType: 'text' },
+    { type: 'text-delta', index: 1, text: 'Reply.' },
+    { type: 'block-end', index: 1, block: { type: 'text', text: 'Reply.' } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ]
+  const summarize = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+    return '晚到的摘要'
+  }
+  const t0 = Date.now()
+  const out = await collect(transformCoTStream(upstream,
+    cfg({ minReasoningChars: 10, reasoningBlockWaitMs: 30, onError: 'drop' }), summarize))
+  assert.ok(Date.now() - t0 < 3000, 'the reply is not delayed past the wait window')
+  const { blocks } = assemble(out)
+  assert.deepEqual(blocks.map((b) => b.type), ['text'],
+    'drop closes without a Think row when nothing was emitted')
+  assert.equal(reasoningText(out), '', 'no reasoning delta at all')
+  const json = JSON.stringify(out)
+  assert.ok(!json.includes(UNAVAILABLE_PLACEHOLDER), 'no placeholder under drop')
+  assert.ok(!json.includes('SECRET'), 'the raw reasoning stays hidden under drop')
+  assert.ok(!json.includes('晚到的摘要'), 'the late summary is dropped')
+  console.log('ok - drop degrades a missed window to no Think row at all')
+}
+
+async function testDropFailureShowsNothing() {
+  // Outright summarizer failure under drop: no placeholder, no raw, no
+  // reasoning block in the landed message.
+  const out = await collect(transformCoTStream(streamingUpstream(),
+    cfg({ chunkChars: 60, onError: 'drop' }),
+    async () => { throw new Error('boom') }))
+  const json = JSON.stringify(out)
+  assert.ok(!json.includes(UNAVAILABLE_PLACEHOLDER), 'no placeholder under drop')
+  assert.ok(!json.includes('SECRET'), 'the raw reasoning stays hidden under drop')
+  const { blocks } = assemble(out)
+  assert.deepEqual(blocks.map((b) => b.type), ['text'], 'failure under drop leaves no Think row')
+  console.log('ok - failure under drop shows nothing at all')
+}
+
+async function testDropKeepsLandedSegmentsOnly() {
+  // With segments already streamed, drop keeps exactly those and discards
+  // the missed tail — no placeholder is appended to the landed content.
+  const upstream = [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    { type: 'reasoning-delta', index: 0, text: sentence(0) },
+    { type: 'reasoning-delta', index: 0, text: sentence(1) },
+    { type: 'reasoning-delta', index: 0, text: sentence(2) },
+    { type: 'reasoning-delta', index: 0, text: sentence(3) },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'raw' } },
+    { type: 'block-start', index: 1, blockType: 'text' },
+    { type: 'text-delta', index: 1, text: 'Reply.' },
+    { type: 'block-end', index: 1, block: { type: 'text', text: 'Reply.' } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ]
+  let call = 0
+  const summarize = async () => {
+    call += 1
+    // The first (midstream, fire-and-forget) segment lands immediately; the
+    // closing segment misses its wait window.
+    if (call === 1) return '先分析了问题。'
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+    return '迟到的尾巴。'
+  }
+  const out = await collect(transformCoTStream(upstream,
+    cfg({ minReasoningChars: 10, chunkChars: 60, reasoningBlockWaitMs: 30, onError: 'drop' }), summarize))
+  const { blocks } = assemble(out)
+  assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'text'],
+    'landed segments keep the Think row above the reply')
+  assert.equal(blocks[0].text, '先分析了问题。',
+    'the dropped tail leaves no placeholder behind')
+  const json = JSON.stringify(out)
+  assert.ok(!json.includes('迟到的尾巴'), 'the missed closing segment is dropped')
+  assert.ok(!json.includes(UNAVAILABLE_PLACEHOLDER))
+  console.log('ok - drop keeps landed segments and drops the missed tail without a placeholder')
+}
+
 async function testStreamReasoningBlockDisabledKeepsLegacyBehavior() {
   // streamReasoningBlock: false restores the pre-fix streaming semantics:
   // a slow summary trails the reply, for users who prefer zero reply delay
@@ -704,6 +787,9 @@ await testMultiReasoningBlocks()
 await testStreamReasoningBlockWaitsForSummary()
 await testStreamReasoningBlockDeadlineDegradesToPlaceholder()
 await testStreamReasoningBlockDeadlinePassThroughShowsRaw()
+await testStreamReasoningBlockDeadlineDropShowsNothing()
+await testDropFailureShowsNothing()
+await testDropKeepsLandedSegmentsOnly()
 await testStreamReasoningBlockDisabledKeepsLegacyBehavior()
 await testTypewriterPacesCharacters()
 await testTypewriterKeepsCodePointsWhole()

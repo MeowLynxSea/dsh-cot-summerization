@@ -118,8 +118,13 @@ export interface CotSummarizerConfig {
   maxSummaryChars?: number
   /** Summarizer request timeout in milliseconds. */
   timeoutMs?: number
-  /** Behavior when the summarizer call fails: hide the reasoning or pass it through. */
-  onError?: 'hide' | 'pass-through'
+  /**
+   * Behavior when the summarizer call fails or misses its pre-reply wait
+   * window: `hide` shows a placeholder, `pass-through` shows the raw
+   * reasoning, `drop` shows nothing at all — summary segments already
+   * streamed stay, everything not yet shown simply vanishes.
+   */
+  onError?: 'hide' | 'pass-through' | 'drop'
   /**
    * Summarize progressively while the raw chain of thought streams (near-realtime),
    * instead of one summary after the stream ends.
@@ -190,7 +195,7 @@ export const Config: Schema<CotSummarizerConfig> = z.object({
   minReasoningChars: z.number().default(32),
   maxSummaryChars: z.number().default(50),
   timeoutMs: z.number().default(30000),
-  onError: z.union(['hide', 'pass-through'] as const).default('hide'),
+  onError: z.union(['hide', 'pass-through', 'drop'] as const).default('hide'),
   incremental: z.boolean().default(true),
   chunkChars: z.number().default(500),
   chunkIntervalMs: z.number().default(8000),
@@ -217,7 +222,7 @@ export interface ResolvedCotSummarizerConfig {
   minReasoningChars: number
   maxSummaryChars: number
   timeoutMs: number
-  onError: 'hide' | 'pass-through'
+  onError: 'hide' | 'pass-through' | 'drop'
   incremental: boolean
   chunkChars: number
   chunkIntervalMs: number
