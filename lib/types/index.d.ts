@@ -56,6 +56,20 @@ export type SummarizeFn = (raw: string, cfg: ResolvedCotSummarizerConfig, signal
  * blocks keep their indices verbatim, and the summary block never collides
  * with them because the raw reasoning index is freed by swallowing.
  *
+ * Ordering guarantee (`streamReasoningBlock`, on by default): the Web
+ * Client renders content blocks strictly in first-seen order, so a segment
+ * summary settling after the reply already streamed would re-open the
+ * reasoning block UNDER the reply. The preferred closing segment call is
+ * awaited inline — bounded by `reasoningBlockWaitMs` — ahead of the first
+ * reply chunk (and of the finish chunk); a call that misses the window
+ * degrades in place (placeholder under `hide`, raw reasoning under
+ * `pass-through`, landed summaries kept either way) and its late result is
+ * dropped. Fire-and-forget midstream segments never wait. Verbatim short
+ * chains on interleaved wire streams (a reply block opens before the
+ * reasoning block closes) are deferred to just before the finish chunk as
+ * one atomic Think row. The model-visible surface restore always rebuilds
+ * the wire-exact order independently of any of this (see `./history.ts`).
+ *
  * When `capture` is supplied, the raw reasoning (per upstream block) and the
  * finish chunk's replay state are recorded into it, so the raw chain of
  * thought can later be restored on the model-visible session surface while

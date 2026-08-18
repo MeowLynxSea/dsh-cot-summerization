@@ -470,6 +470,136 @@ async function testShortSegmentEchoDropped() {
   console.log('ok - short raw segments echoed by the summarizer are dropped')
 }
 
+async function testStreamReasoningBlockWaitsForSummary() {
+  // The field scenario: reasoning completes, the reply starts streaming,
+  // and the segment call settles a beat later. With the wait window the
+  // reply is held back just long enough for the summary to join the block
+  // ABOVE the reply — the assembler's first-seen order stays
+  // [reasoning, text] and the UI never renders a trailing Think row.
+  const upstream = [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    { type: 'reasoning-delta', index: 0, text: sentence(0) },
+    { type: 'reasoning-delta', index: 0, text: sentence(1) },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'raw' } },
+    { type: 'block-start', index: 1, blockType: 'text' },
+    { type: 'text-delta', index: 1, text: 'Reply.' },
+    { type: 'block-end', index: 1, block: { type: 'text', text: 'Reply.' } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ]
+  const summarize = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    return '考虑之后给出答案。'
+  }
+  const t0 = Date.now()
+  const out = await collect(transformCoTStream(upstream,
+    cfg({ minReasoningChars: 10, reasoningBlockWaitMs: 1000 }), summarize))
+  assert.ok(Date.now() - t0 >= 15, 'the reply waited for the segment call')
+  const { blocks } = assemble(out)
+  assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'text'],
+    'a fast-enough summary keeps the Think row above the reply')
+  assert.equal(blocks[0].text, '考虑之后给出答案。')
+  const reasoningBlockStart = out.findIndex((c) => c.type === 'block-start' && c.blockType === 'reasoning')
+  const textBlockStart = out.findIndex((c) => c.type === 'block-start' && c.blockType === 'text')
+  assert.ok(reasoningBlockStart !== -1 && reasoningBlockStart < textBlockStart,
+    'the summary block opens strictly before the reply block')
+  assert.equal(reasoningText(out), '考虑之后给出答案。', 'the summary is streamed, not only appended at close')
+  console.log('ok - streamReasoningBlock waits out the segment call and keeps the Think row first')
+}
+
+async function testStreamReasoningBlockDeadlineDegradesToPlaceholder() {
+  // The summarizer outlasts the wait window: the block closes in time with
+  // the placeholder (hide policy), the late segment result is dropped, and
+  // the reply is never delayed past `reasoningBlockWaitMs`.
+  const upstream = [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    { type: 'reasoning-delta', index: 0, text: sentence(0) },
+    { type: 'reasoning-delta', index: 0, text: sentence(1) },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'raw' } },
+    { type: 'block-start', index: 1, blockType: 'text' },
+    { type: 'text-delta', index: 1, text: 'Reply.' },
+    { type: 'block-end', index: 1, block: { type: 'text', text: 'Reply.' } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ]
+  const summarize = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+    return '晚到的摘要'
+  }
+  const t0 = Date.now()
+  const out = await collect(transformCoTStream(upstream,
+    cfg({ minReasoningChars: 10, reasoningBlockWaitMs: 30 }), summarize))
+  const elapsed = Date.now() - t0
+  assert.ok(elapsed < 3000, `the reply is not delayed past the wait window (took ${elapsed}ms)`)
+  const { blocks } = assemble(out)
+  assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'text'],
+    'the Think row stays above the reply even when the summary misses its window')
+  assert.equal(blocks[0].text, UNAVAILABLE_PLACEHOLDER,
+    'the missed window degrades to the placeholder under hide')
+  assert.equal(reasoningText(out), UNAVAILABLE_PLACEHOLDER,
+    'the late segment summary never reaches the stream')
+  const json = JSON.stringify(out)
+  assert.ok(!json.includes('晚到的摘要'), 'the late summary is dropped for ordering')
+  assert.ok(!json.includes('SECRET'), 'raw chain of thought must not appear in the output')
+  console.log('ok - a summary missing the wait window degrades in place instead of trailing the reply')
+}
+
+async function testStreamReasoningBlockDeadlinePassThroughShowsRaw() {
+  // Under onError: pass-through, a missed window closes the block with the
+  // RAW reasoning (the user's chosen degradation), streamed as a delta just
+  // before the reply.
+  const upstream = [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    { type: 'reasoning-delta', index: 0, text: sentence(0) },
+    { type: 'reasoning-delta', index: 0, text: sentence(1) },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'raw' } },
+    { type: 'block-start', index: 1, blockType: 'text' },
+    { type: 'text-delta', index: 1, text: 'Reply.' },
+    { type: 'block-end', index: 1, block: { type: 'text', text: 'Reply.' } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ]
+  const summarize = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+    return '晚到的摘要'
+  }
+  const out = await collect(transformCoTStream(upstream,
+    cfg({ minReasoningChars: 10, reasoningBlockWaitMs: 30, onError: 'pass-through' }), summarize))
+  const { blocks } = assemble(out)
+  assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'text'])
+  assert.ok(blocks[0].text.includes('SECRET step 0'),
+    'pass-through shows the raw reasoning when the window is missed')
+  assert.ok(reasoningText(out).includes('SECRET step 0'),
+    'the raw reasoning is streamed as a delta ahead of the reply')
+  console.log('ok - pass-through degrades a missed window to the raw reasoning, in place')
+}
+
+async function testStreamReasoningBlockDisabledKeepsLegacyBehavior() {
+  // streamReasoningBlock: false restores the pre-fix streaming semantics:
+  // a slow summary trails the reply, for users who prefer zero reply delay
+  // over the Think row's position.
+  const upstream = [
+    { type: 'block-start', index: 0, blockType: 'reasoning' },
+    { type: 'reasoning-delta', index: 0, text: sentence(0) },
+    { type: 'reasoning-delta', index: 0, text: sentence(1) },
+    { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'raw' } },
+    { type: 'block-start', index: 1, blockType: 'text' },
+    { type: 'text-delta', index: 1, text: 'Reply.' },
+    { type: 'block-end', index: 1, block: { type: 'text', text: 'Reply.' } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ]
+  const summarize = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    return '迟到的摘要。'
+  }
+  const t0 = Date.now()
+  const out = await collect(transformCoTStream(upstream,
+    cfg({ minReasoningChars: 10, streamReasoningBlock: false, reasoningBlockWaitMs: 30000 }), summarize))
+  assert.ok(Date.now() - t0 < 1000, 'the reply streams without any reasoning-block wait')
+  const { blocks } = assemble(out)
+  assert.deepEqual(blocks.map((b) => b.type), ['text', 'reasoning'],
+    'with the feature off a slow summary trails the reply (legacy order)')
+  assert.equal(blocks[1].text, '迟到的摘要。', 'the late summary is still delivered')
+  console.log('ok - streamReasoningBlock: false restores the legacy late-summary behavior')
+}
+
 async function testTypewriterPacesCharacters() {
   // With the typewriter on, completed segments are emitted one code point at
   // a time (interval 0 keeps the test instant) and still assemble into the
@@ -571,6 +701,10 @@ await testSharedCoreDedup()
 await testEchoedRawDropped()
 await testShortSegmentEchoDropped()
 await testMultiReasoningBlocks()
+await testStreamReasoningBlockWaitsForSummary()
+await testStreamReasoningBlockDeadlineDegradesToPlaceholder()
+await testStreamReasoningBlockDeadlinePassThroughShowsRaw()
+await testStreamReasoningBlockDisabledKeepsLegacyBehavior()
 await testTypewriterPacesCharacters()
 await testTypewriterKeepsCodePointsWhole()
 await testAdaptiveChunkFormula()

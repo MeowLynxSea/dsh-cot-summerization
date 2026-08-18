@@ -80,10 +80,10 @@ assert.ok(cot, 'cot-summarizer namespace must be registered for the Web settings
 assert.equal(cot.value.model, 'tiny', 'settings surface the resolved configuration')
 
 // The assembled assistant message has the summary, not the raw reasoning.
-// The summary block opens after the tool call, so the loop's first-seen
-// order is [tool-call, reasoning].
-assert.deepEqual(message.content.map((b) => b.type), ['tool-call', 'reasoning'])
-assert.equal(message.content[1].text, 'CLEAN SUMMARY')
+// The summarizer settles fast, so segment folding keeps the summary block
+// ahead of the tool call — the intended first-seen order.
+assert.deepEqual(message.content.map((b) => b.type), ['reasoning', 'tool-call'])
+assert.equal(message.content[0].text, 'CLEAN SUMMARY')
 const serialized = JSON.stringify(message)
 assert.ok(!serialized.includes('RAW SECRET'), 'raw chain of thought must not appear anywhere')
 
@@ -139,9 +139,9 @@ const landed = session.append('assistant/message', {
   step: 0,
   message: loopMessage,
 }, { surfaceOp: 'append', sourceEventSeqs: chunkSeqs })
-assert.equal(landed.data.message.content.at(-1).text, 'CLEAN SUMMARY',
+assert.equal(landed.data.message.content[0].text, 'CLEAN SUMMARY',
   'the append-origin event (the UI transcript) keeps the summary')
-assert.deepEqual(landed.data.message.content.map((b) => b.type), ['tool-call', 'reasoning'],
+assert.deepEqual(landed.data.message.content.map((b) => b.type), ['reasoning', 'tool-call'],
   'the landed (transcript) message carries the emitted first-seen order')
 
 // The restorer appends in a microtask once the message event dispatch returns.

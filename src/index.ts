@@ -230,6 +230,20 @@ class CharQueue {
  * blocks keep their indices verbatim, and the summary block never collides
  * with them because the raw reasoning index is freed by swallowing.
  *
+ * Ordering guarantee (`streamReasoningBlock`, on by default): the Web
+ * Client renders content blocks strictly in first-seen order, so a segment
+ * summary settling after the reply already streamed would re-open the
+ * reasoning block UNDER the reply. The preferred closing segment call is
+ * awaited inline — bounded by `reasoningBlockWaitMs` — ahead of the first
+ * reply chunk (and of the finish chunk); a call that misses the window
+ * degrades in place (placeholder under `hide`, raw reasoning under
+ * `pass-through`, landed summaries kept either way) and its late result is
+ * dropped. Fire-and-forget midstream segments never wait. Verbatim short
+ * chains on interleaved wire streams (a reply block opens before the
+ * reasoning block closes) are deferred to just before the finish chunk as
+ * one atomic Think row. The model-visible surface restore always rebuilds
+ * the wire-exact order independently of any of this (see `./history.ts`).
+ *
  * When `capture` is supplied, the raw reasoning (per upstream block) and the
  * finish chunk's replay state are recorded into it, so the raw chain of
  * thought can later be restored on the model-visible session surface while
@@ -253,6 +267,8 @@ export async function* transformCoTStream(
 ): AsyncGenerator<StreamChunk> {
   let rawCoT = ''
   let sawReasoning = false
+  /** Any reasoning delta ever seen, even before `minReasoningChars` filtering. */
+  let sawAnyReasoning = false
   let reasoningDone = false
   let summaryIndex = -1
   let summaryStarted = false
@@ -373,11 +389,100 @@ export async function* transformCoTStream(
     }
   }
 
+  /** Deadline (per `now`) for completing the preferred pre-reply segment call. */
+  let preReplyDeadlineAt: number | undefined
+  /** Arm the pre-reply wait window; only the preferred segment call gets one. */
+  const armPreReplyDeadline = (): void => {
+    if (cfg.streamReasoningBlock && preReplyDeadlineAt === undefined) {
+      preReplyDeadlineAt = now() + cfg.reasoningBlockWaitMs
+    }
+  }
+  /** The reasoning phase is closed and the wait window has expired. */
+  const preReplyDeadlinePassed = (): boolean =>
+    reasoningDone
+    && preReplyDeadlineAt !== undefined
+    && now() >= preReplyDeadlineAt
+
+  /**
+   * Keep the Think disclosure row above the reply even when the summarizer is
+   * slow. Without this, a segment summary that settles after the reply (or the
+   * finish chunk) already passed re-opens the reasoning block at the tail —
+   * the Web Client renders message content blocks strictly in first-seen
+   * order, so the Think row would land underneath the reply.
+   *
+   * The moment a TEXT / TOOL-CALL block opens (or the finish chunk arrives)
+   * while the reasoning phase is already closed, the preferred segment call
+   * is unfolded inline: it is awaited up to `reasoningBlockWaitMs`, its
+   * result folded, the queue drained, and the block closed with
+   * `assembleReasoningEnd` — all BEFORE the triggering chunk is forwarded.
+   * Waiting grants the segment-continuity invariant (folding order can never
+   * invert), and the index is freed upstream so the assembler accepts any
+   * emission order.
+   *
+   * When the call has not settled by the deadline the block is closed
+   * immediately with the assembled text (full raw under `pass-through`, the
+   * placeholder — or the pending summary when it lands in time — under
+   * `hide`). Late segment results are then DROPPED, which strictly dominates
+   * the previous behavior of emitting them above the landed message at stream
+   * end. Everything produced by this helper stays in correct stream order —
+   * as in-order consumers expect — so no recovery emission rides the finish.
+   */
+  function assembleReasoningEnd(): string {
+    if (rawShown) return rawCoT.trim()
+    if (cfg.onError === 'pass-through') {
+      const trimmed = rawCoT.trim()
+      if (trimmed !== '') return trimmed
+    }
+    return emitted === '' ? UNAVAILABLE_PLACEHOLDER : emitted
+  }
+
+  /**
+   * Await the in-flight segment call up to the wait deadline, fold its
+   * result when it lands in time, drain the queue, and close the reasoning
+   * block. Idempotent; the no-op switch cases leave the flags alone so a
+   * later trigger of the same or another kind still runs the full sequence.
+   */
+  async function* streamReasoningBlock(): AsyncGenerator<StreamChunk> {
+    if (summaryClosed) return
+    if (cfg.streamReasoningBlock && pending !== undefined && !pendingSettled) {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        const timeout = new Promise<'timeout'>((resolve) => {
+          const waitMs = Math.max(0, cfg.reasoningBlockWaitMs)
+          timer = setTimeout(() => resolve('timeout'), waitMs)
+        })
+        const winner = await Promise.race([pending.then(() => 'settled' as const), timeout])
+        if (winner === 'settled') yield* foldPending()
+      } finally {
+        if (timer !== undefined) clearTimeout(timer)
+      }
+    }
+    yield* drainQueue()
+    if (!summaryStarted) {
+      summaryStarted = true
+      yield { type: 'block-start', index: blockIndex(), blockType: 'reasoning' }
+    }
+    // Deliver whatever the final block text adds beyond the already-drained
+    // queue (the placeholder under `hide`, the raw reasoning under
+    // `pass-through`): a streaming consumer must SEE the fallback even
+    // though it only materializes at close time. Still ahead of the reply
+    // and the finish chunk, so the live order stays intact.
+    const endText = assembleReasoningEnd()
+    if (endText !== emitted) {
+      const tail = endText.startsWith(emitted) ? endText.slice(emitted.length) : endText
+      if (tail !== '') yield { type: 'reasoning-delta', index: blockIndex(), text: tail }
+    }
+    summaryClosed = true
+    yield { type: 'block-end', index: blockIndex(), block: { type: 'reasoning', text: endText } }
+  }
+
   /** Show the raw reasoning verbatim in its own Think row (short input / pass-through). */
   function* emitRawReasoning(text: string): Generator<StreamChunk> {
     if (summaryStarted) return
     const index = blockIndex()
     rawShown = true
+    summaryStarted = true
+    summaryClosed = true
     yield { type: 'block-start', index, blockType: 'reasoning' }
     yield { type: 'reasoning-delta', index, text }
     yield { type: 'block-end', index, block: { type: 'reasoning', text } }
@@ -444,6 +549,20 @@ export async function* transformCoTStream(
   const hasUnsummarizedTail = (): boolean =>
     !rawShown && rawCoT.trim().length >= cfg.minReasoningChars && rawCoT.length > lastSegmentStart
 
+  /** The exact chunk kinds the reply-suppression predicate matches. */
+  const isReplyChunk = (c: StreamChunk): boolean =>
+    c.type === 'text-delta' || c.type === 'tool-call-delta'
+    || (c.type === 'block-start' && (c.blockType === 'text' || c.blockType === 'tool-call'))
+  /**
+   * True between the first interleaved reply chunk and the raw reasoning's
+   * block-end. The verbatim short-CoT emission opens its block AT the
+   * block-end — which on such streams lands after the interleaved chunks —
+   * so verbatim streams suppress too, deferring the emission to the finish
+   * (see `rawShown`). With streamReasoningBlock on the summary path
+   * suppresses once the reasoning phase is closed and not yet displayed.
+   */
+  let replyInterleaved = false
+
   for await (const chunk of upstream) {
     // Every upstream chunk — including the swallowed reasoning — feeds the
     // wire-exact assembly the surface restoration replays.
@@ -461,11 +580,28 @@ export async function* transformCoTStream(
     // current upstream chunk, so the summary block keeps opening before the
     // reply.
     yield* drainQueue()
+    // Reply-suppression trigger: a text / tool-call chunk arrives while the
+    // reasoning phase is closed. The raw call's preferred wait window may
+    // still be running (fast reply streams) or already expired — either way
+    // the Think row must close ABOVE this chunk (see `streamReasoningBlock`,
+    // which waits out the grace time first). The verbatim short-CoT path
+    // opens its block at the raw reasoning's block-END, which an interleaved
+    // adapter can close after the tool call's block-start: emit it ahead of
+    // the interleaved chunk instead, keeping every Think row first-seen.
+    if (isReplyChunk(chunk) && sawAnyReasoning && !reasoningDone) replyInterleaved = true
+    const suppressReply = cfg.streamReasoningBlock && isReplyChunk(chunk)
+      && reasoningDone && !summaryClosed
+    if (suppressReply) yield* streamReasoningBlock()
     switch (chunk.type) {
       case 'block-start': {
         if (chunk.blockType === 'reasoning') {
           sawReasoning = true
+          sawAnyReasoning = true
           if (capture !== undefined) capture.sawReasoning = true
+          // All upstream reasoning blocks are merged into ONE Think row
+          // (occupying the first block's index), so its content grows with
+          // segment summaries even across interleaved reply blocks; the
+          // close above a reply is permanent for the stream.
           if (summaryIndex === -1) summaryIndex = chunk.index
           continue
         }
@@ -474,6 +610,7 @@ export async function* transformCoTStream(
       }
       case 'reasoning-delta': {
         sawReasoning = true
+        sawAnyReasoning = true
         if (capture !== undefined) capture.sawReasoning = true
         rawCoT += chunk.text
         adaptive?.recordDelta(chunk.text.length, now())
@@ -483,6 +620,7 @@ export async function* transformCoTStream(
       case 'block-end': {
         if (chunk.block.type === 'reasoning') {
           sawReasoning = true
+          sawAnyReasoning = true
           if (capture !== undefined) capture.sawReasoning = true
           if (!reasoningDone) {
             reasoningDone = true
@@ -490,12 +628,28 @@ export async function* transformCoTStream(
             if (trimmed === '') {
               // nothing to summarize
             } else if (trimmed.length < cfg.minReasoningChars) {
-              yield* emitRawReasoning(trimmed)
-            } else if (pending === undefined && hasUnsummarizedTail()) {
-              // Reasoning complete: one final call covers the remaining tail
-              // while the reply streams (folded at a later boundary, so the
-              // reply is never delayed).
-              fire()
+              rawShown = true
+              // An interleaved adapter may have already streamed a reply
+              // chunk past this point: the Think row is then DEFERRED to
+              // the finish (where it still lands ahead of it) instead of
+              // reopening after the reply.
+              if (!replyInterleaved) yield* emitRawReasoning(trimmed)
+            } else if (pending === undefined && hasUnsummarizedTail() && !summaryClosed) {
+              // Reasoning complete: the final call covers the remaining
+              // tail. Under streamReasoningBlock it is awaited inline
+              // (bounded by `reasoningBlockWaitMs`) so its summary joins the
+              // block ABOVE the reply instead of trailing under it;
+              // otherwise it folds in the background while the reply
+              // streams. This is the call whose late settle would push the
+              // Think row under the reply — the only one that earns a wait
+              // window.
+              if (cfg.streamReasoningBlock) {
+                fire()
+                armPreReplyDeadline()
+                yield* streamReasoningBlock()
+              } else {
+                fire()
+              }
             }
           }
           continue
@@ -514,21 +668,59 @@ export async function* transformCoTStream(
           capture.replayState = chunk.replayState
           capture.rawBlocks = rawAssembler.blocks()
         }
+        // Terminal pre-reply-close trigger: the model skipped the reply and
+        // answered with reasoning alone. Text-stream consumers get their
+        // Think row before finish too (folded after the replay guard so the
+        // passthrough shape stays byte-identical).
+        if (cfg.streamReasoningBlock
+          && !sawReasoning
+          && sawAnyReasoning
+          && preReplyDeadlinePassed()
+        ) yield* streamReasoningBlock()
         if (!sawReasoning) {
           yield chunk
           return
         }
+        // A deferred verbatim short-CoT emission whose reply never arrived:
+        // land it now, still ahead of the finish chunk.
+        if (rawShown && !summaryStarted && !summaryClosed && rawCoT.trim() !== '') {
+          yield* emitRawReasoning(rawCoT.trim())
+        }
+        // The reasoning all fit below `minReasoningChars` — never even the
+        // placeholder. Close the already-opened Think row so the stream ends
+        // with every opened block closed.
+        if (cfg.streamReasoningBlock && summaryStarted && !summaryClosed && emitted === '') {
+          summaryClosed = true
+          yield { type: 'block-end', index: blockIndex(), block: { type: 'reasoning', text: '' } }
+        }
         const aborted = callerSignal?.aborted === true
         if (!aborted) {
-          if (pending !== undefined) yield* foldPending()
+          // Under streamReasoningBlock an open unclosed block (deadline
+          // never armed or never passed — e.g. the tail call is still
+          // running at finish) is closed WITH the same grace wait and the
+          // assembled fallback, keeping the landed block ahead of finish
+          // and cutting the stream's worst-case tail latency from a full
+          // summarizer timeout to `reasoningBlockWaitMs`. A block that
+          // never opened (placeholder path) is closed below.
+          if (cfg.streamReasoningBlock && summaryStarted && !summaryClosed) {
+            yield* streamReasoningBlock()
+          }
+          if (pending !== undefined && !summaryClosed) yield* foldPending()
           const trimmed = rawCoT.trim()
-          if (hasUnsummarizedTail()) {
+          if (hasUnsummarizedTail() && !summaryClosed) {
             // The reasoning never closed (an error finish) or a tail remained:
             // run the final segment call now.
             fire()
             yield* foldPending()
           }
-          if (emitted === '' && !rawShown && trimmed.length >= cfg.minReasoningChars) {
+          if (cfg.streamReasoningBlock && !summaryClosed) {
+            // A block that never opened (no landed segment) gets the same
+            // graceful close — echo-guard rejections included — so the
+            // placeholder/pass-through fallback reaches streaming consumers
+            // ahead of the finish chunk.
+            yield* streamReasoningBlock()
+          }
+          if (emitted === '' && !rawShown && !summaryClosed && trimmed.length >= cfg.minReasoningChars) {
             // Every summarizer call failed and nothing was shown yet: apply
             // the configured failure policy.
             if (cfg.onError === 'pass-through') {

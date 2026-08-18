@@ -131,6 +131,8 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 | `minChunkChars` | `64` | 自适应分块下限(字符) |
 | `maxChunkChars` | `2000` | 自适应分块上限(字符) |
 | `chunkSafetyFactor` | `2` | 一个分块约覆盖多少个总结器 RTT 的流式文本 |
+| `streamReasoningBlock` | `true` | 总结器较慢时,Think 行也始终落在回复正文/工具调用**上方**(见下) |
+| `reasoningBlockWaitMs` | `3000` | 为「收尾段摘要」等待的最长毫秒数;超时则原位置降级显示 |
 
 <details>
 <summary><b>行为细节(严肃模式)</b></summary>
@@ -143,6 +145,7 @@ Bundle patch 会自动应用,插件以 `cot-summarizer` 条目加入 profile 分
 - 去重逻辑:bigram 相似度 ≥ 0.65,或最长公共子串覆盖核心短语的复述句,会被从段落结果中剔除。
 - 主调用中止时摘要请求同步中止,且受 `timeoutMs` 约束。
 - `adaptiveChunk` 开启时,有效分块大小 = `clamp(流速率 × 总结器RTT × chunkSafetyFactor, minChunkChars, maxChunkChars)`,其中流速率与 RTT 均使用 EWMA 平滑。
+- **Think 行的流式位置**:前端按内容块的首次出现顺序渲染。当推理已结束而收尾段摘要尚未返回、回复正文/工具调用已开始流动时,插件会短暂停住回复(上限 `reasoningBlockWaitMs`)等候这次摘要:赶上则摘要照常流入 Think 行;赶不上则按 `onError` 策略在**原位置**降级(`hide` 显示占位符,`pass-through` 显示原文),迟到的摘要丢弃——Think 行永远不会出现在回复下方。关闭 `streamReasoningBlock` 可恢复旧行为(零等待,慢的摘要行落在回复之后)。交错流(工具调用块先于推理块关闭)中过短而原文放行的思维链,会作为完整的一行延迟到 finish 前发射,不再逐字混入正文;模型可见历史始终按原始线路序恢复,不受影响。
 
 </details>
 

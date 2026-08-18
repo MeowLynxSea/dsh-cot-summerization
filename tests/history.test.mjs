@@ -149,21 +149,27 @@ async function testCaptureRecordsRaw() {
 }
 
 async function testRestoreKeepsWireOrder() {
-  // The exact field failure: the landed message orders the blocks
-  // [tool-call, reasoning] (the summary block opens after the tool call —
-  // in the field the summarizer round trip outlasts the tool-call chunks),
-  // but the replay state describes [reasoning, tool-call]. The restored
-  // message must carry the WIRE order or the adapter rejects the next
-  // request ("block 0 does not match assistant content", INVALID_REPLAY_STATE).
+  // The exact field failure: previously the landed message ordered the
+  // blocks [tool-call, reasoning] when the summarizer round trip outlasted
+  // the tool-call chunks, while the replay state describes the WIRE order
+  // [reasoning, tool-call] — and the adapter rejected the next request
+  // ("block 0 does not match assistant content", INVALID_REPLAY_STATE).
+  // The pre-reply close now keeps the landed order matching the wire:
+  // with a zero wait window the late summary degrades to the placeholder
+  // but the reasoning block still lands FIRST. The restored message must
+  // carry the WIRE order regardless (the placeholder/summary never enters
+  // the model-visible surface).
   const capture = createRawCapture()
   const deferredSummary = async () => {
-    await new Promise((resolve) => setTimeout(resolve, 1))
+    await new Promise((resolve) => setTimeout(resolve, 50))
     return 'I will run a command.'
   }
-  const out = await collect(transformCoTStream(toolCallUpstream(), cfg({ minReasoningChars: 10 }),
+  const out = await collect(transformCoTStream(toolCallUpstream(), cfg({ minReasoningChars: 10, reasoningBlockWaitMs: 0 }),
     deferredSummary, undefined, () => {}, capture))
   const { blocks } = assemble(out)
-  assert.deepEqual(blocks.map((b) => b.type), ['tool-call', 'reasoning'], 'the emitted stream lands the tool call first')
+  assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'tool-call'],
+    'the reasoning block stays above the tool call — a summary that misses the wait window degrades to the placeholder, never to a trailing Think row')
+  assert.equal(blocks[0].text, UNAVAILABLE_PLACEHOLDER, 'the late segment summary is dropped for ordering')
   const landed = assembledMessage(blocks)
 
   const restored = restoreRawAssistantMessage(landed, capture)
@@ -313,13 +319,15 @@ async function testRestorerGuards() {
 }
 
 async function testVerbatimStreamRestoresWireOrder() {
-  // Short reasoning passes through verbatim for DISPLAY, but the re-emitted
-  // reasoning block can land after later blocks (interleaved wire), so the
-  // finish still drops the replay state and the surface restore lands the
-  // wire-exact message with it. This is the second field failure
-  // (session.jsonl seq 166-172: landed [tool-call, reasoning] + replayState
-  // → INVALID_REPLAY_STATE at the next request, and no replacement followed
-  // because rawShown used to skip restoration).
+  // Short reasoning passes through verbatim for DISPLAY. On an interleaved
+  // wire stream (the tool call opens before the reasoning block closes) the
+  // verbatim row once landed spliced INTO the reply or after the finish —
+  // the second field failure (session.jsonl seq 166-172: landed
+  // [tool-call, reasoning] + replayState → INVALID_REPLAY_STATE at the next
+  // request, and no replacement followed because rawShown used to skip
+  // restoration). The verbatim emission now stays WHOLE and ahead of the
+  // finish chunk, the finish still drops the replay state, and the surface
+  // restore lands the wire-exact message with it.
   const capture = createRawCapture()
   const out = await collect(transformCoTStream(interleavedShortUpstream(), cfg({ minReasoningChars: 32 }),
     async () => { throw new Error('must not be called for short reasoning') }, undefined, () => {}, capture))
@@ -329,7 +337,12 @@ async function testVerbatimStreamRestoresWireOrder() {
   assert.ok(!('replayState' in last), 'a touched stream never carries the finish replay state')
   const { blocks } = assemble(out)
   assert.deepEqual(blocks.map((b) => b.type), ['tool-call', 'reasoning'],
-    'the verbatim re-emission still lands the tool call first (first-seen order)')
+    'an interleaved wire order keeps the tool call first-seen; the verbatim row lands whole ahead of the finish')
+  // The whole verbatim Think row is emitted atomically between the last
+  // tool-call chunk and the finish — never spliced into the reply.
+  const toolEnd = out.findIndex((c) => c.type === 'block-end' && c.block?.type === 'tool-call')
+  const reasoningStart = out.findIndex((c) => c.type === 'block-start' && c.blockType === 'reasoning')
+  assert.ok(toolEnd !== -1 && reasoningStart > toolEnd, 'the verbatim row opens only after the tool call closed')
 
   const landed = assembledMessage(blocks, { kind: 'pi-ai', blocks: [{ type: 'reasoning' }, { type: 'tool-call' }] })
   const restored = restoreRawAssistantMessage(landed, capture)
@@ -367,9 +380,8 @@ async function testIdenticalContentSkipsRestore() {
 
 async function testPlaceholderStillRestores() {
   // Under onError: hide the UI shows a placeholder; the model-visible
-  // surface still gets the raw chain of thought. With no partial summary
-  // landed, the placeholder block opens after the streamed reply, so locate
-  // the reasoning block by type.
+  // surface still gets the raw chain of thought (locate the reasoning block
+  // by type).
   const capture = createRawCapture()
   const out = await collect(transformCoTStream(summarizingUpstream(), cfg({ minReasoningChars: 10 }),
     async () => { throw new Error('boom') }, undefined, () => {}, capture))
