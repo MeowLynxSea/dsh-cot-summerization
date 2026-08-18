@@ -164,7 +164,7 @@ async function testRestoreKeepsWireOrder() {
     await new Promise((resolve) => setTimeout(resolve, 50))
     return 'I will run a command.'
   }
-  const out = await collect(transformCoTStream(toolCallUpstream(), cfg({ minReasoningChars: 10, reasoningBlockWaitMs: 0 }),
+  const out = await collect(transformCoTStream(toolCallUpstream(), cfg({ minReasoningChars: 10, timeoutMs: 1 }),
     deferredSummary, undefined, () => {}, capture))
   const { blocks } = assemble(out)
   assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'tool-call'],

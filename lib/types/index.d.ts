@@ -60,7 +60,7 @@ export type SummarizeFn = (raw: string, cfg: ResolvedCotSummarizerConfig, signal
  * Client renders content blocks strictly in first-seen order, so a segment
  * summary settling after the reply already streamed would re-open the
  * reasoning block UNDER the reply. The preferred closing segment call is
- * awaited inline — bounded by `reasoningBlockWaitMs` — ahead of the first
+ * awaited inline — bounded by `timeoutMs` — ahead of the first
  * reply chunk (and of the finish chunk); a call that misses the window
  * degrades in place (placeholder under `hide`, raw reasoning under
  * `pass-through`, landed summaries kept either way) and its late result is

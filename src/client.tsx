@@ -81,9 +81,8 @@ const en: Record<string, string> = {
   typewriterIntervalMsHint: 'Delay between two revealed characters; 0 disables the delay.',
   streamReasoningBlock: 'Keep Think row above the reply',
   streamReasoningBlockHint: 'When the summary is not ready by the time the reply starts streaming, briefly hold the reply so the Think row never lands below it. Turn off for zero reply delay (a slow summary then trails the reply).',
-  reasoningBlockWaitMs: 'Pre-reply wait (ms)',
-  reasoningBlockWaitMsHint: 'Maximum time the reply is held back for the closing summary; afterwards the row degrades in place per the failure policy below.',
   timeoutMs: 'Request timeout (ms)',
+  timeoutMsHint: 'Timeout for one summarizer call. Also bounds how long the reply is held back for the closing summary when the row ordering fix above is on.',
   onError: 'On summarizer failure',
   onErrorHide: 'Hide reasoning',
   onErrorPassThrough: 'Pass raw reasoning through',
@@ -147,9 +146,8 @@ const zh: Record<string, string> = {
   typewriterIntervalMsHint: '每两个字之间的推送间隔；0 表示不延迟。',
   streamReasoningBlock: '思考行始终在回复上方',
   streamReasoningBlockHint: '当回复开始流动而摘要尚未就绪时，短暂停住回复，保证 Think 折叠行不会掉到回复下方。关闭后回复零等待（慢的摘要会落在回复之后）。',
-  reasoningBlockWaitMs: '回复前等待（毫秒）',
-  reasoningBlockWaitMsHint: '为收尾段摘要停住回复的最长时间；超时后按下方“总结失败时”策略在原位置降级。',
   timeoutMs: '请求超时（毫秒）',
+  timeoutMsHint: '单次总结调用的超时时间。开启上方“思考行始终在回复上方”时，它同时也是回复被停住等待收尾段摘要的最长时间。',
   onError: '总结失败时',
   onErrorHide: '隐藏思维链（显示占位符）',
   onErrorPassThrough: '展示原始思维链',
@@ -609,21 +607,7 @@ function SettingsSection({ t }: SettingsSectionProps) {
             onChange={(checked) => { set('streamReasoningBlock', checked) }}
           />
         </Field>
-        {draft.streamReasoningBlock !== false && (
-          <Field label={t('reasoningBlockWaitMs')} hint={t('reasoningBlockWaitMsHint')}>
-            <input
-              type="number"
-              min={0}
-              max={60000}
-              value={draft.reasoningBlockWaitMs ?? 3000}
-              onChange={(event) => {
-                const parsed = Number(event.target.value)
-                if (Number.isFinite(parsed)) set('reasoningBlockWaitMs', parsed)
-              }}
-            />
-          </Field>
-        )}
-        <Field label={t('timeoutMs')}>
+        <Field label={t('timeoutMs')} hint={t('timeoutMsHint')}>
           <input
             type="number"
             min={1}

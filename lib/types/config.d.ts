@@ -80,7 +80,12 @@ export interface CotSummarizerConfig {
     minReasoningChars?: number;
     /** Target summary length cap, substituted into the default prompt. */
     maxSummaryChars?: number;
-    /** Summarizer request timeout in milliseconds. */
+    /**
+     * Summarizer request timeout in milliseconds. Also bounds how long a
+     * reply chunk (text / tool call) or the finish chunk is held back for
+     * the preferred closing summary under `streamReasoningBlock` — one knob
+     * for "how long a summarizer call may take" everywhere.
+     */
     timeoutMs?: number;
     /**
      * Behavior when the summarizer call fails or misses its pre-reply wait
@@ -127,23 +132,15 @@ export interface CotSummarizerConfig {
      * Keep the Think disclosure row above the reply even when the summarizer
      * is slow. When the reasoning is complete and the summary block is still
      * empty by the time the reply (text / tool call) or the finish chunk
-     * arrives, the in-flight segment call is awaited up to
-     * `reasoningBlockWaitMs`; its result joins the block above the reply when
-     * it lands in time, otherwise the block closes with the placeholder
-     * (`hide`) or the raw reasoning (`pass-through`) and the late segment
-     * summaries are dropped. The Web Client renders message content blocks
-     * strictly in first-seen order, so without this a late summary would
-     * reopen the reasoning block below the reply text.
+     * arrives, the in-flight segment call is awaited up to `timeoutMs`;
+     * its result joins the block above the reply when it lands in time,
+     * otherwise the block closes with the placeholder (`hide`) or the raw
+     * reasoning (`pass-through`) and the late segment summaries are dropped.
+     * The Web Client renders message content blocks strictly in first-seen
+     * order, so without this a late summary would reopen the reasoning block
+     * below the reply text.
      */
     streamReasoningBlock?: boolean;
-    /**
-     * How long a text / tool-call opening is held back for the preferred
-     * pre-reply segment summary, in milliseconds. Only the FIRST segment call
-     * that ends the reasoning phase gets this wait — fire-and-forget midstream
-     * segments never block anything. Bounds the worst-case stall of the reply
-     * (and of the stream tail) introduced by `streamReasoningBlock`.
-     */
-    reasoningBlockWaitMs?: number;
 }
 /** Configuration schema with documented defaults. */
 export declare const Config: Schema<CotSummarizerConfig>;
@@ -171,7 +168,6 @@ export interface ResolvedCotSummarizerConfig {
     typewriter: boolean;
     typewriterIntervalMs: number;
     streamReasoningBlock: boolean;
-    reasoningBlockWaitMs: number;
 }
 /**
  * Validate and normalize a config object (partial inputs receive the same

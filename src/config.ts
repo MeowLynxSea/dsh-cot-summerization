@@ -116,7 +116,12 @@ export interface CotSummarizerConfig {
   minReasoningChars?: number
   /** Target summary length cap, substituted into the default prompt. */
   maxSummaryChars?: number
-  /** Summarizer request timeout in milliseconds. */
+  /**
+   * Summarizer request timeout in milliseconds. Also bounds how long a
+   * reply chunk (text / tool call) or the finish chunk is held back for
+   * the preferred closing summary under `streamReasoningBlock` — one knob
+   * for "how long a summarizer call may take" everywhere.
+   */
   timeoutMs?: number
   /**
    * Behavior when the summarizer call fails or misses its pre-reply wait
@@ -163,23 +168,15 @@ export interface CotSummarizerConfig {
    * Keep the Think disclosure row above the reply even when the summarizer
    * is slow. When the reasoning is complete and the summary block is still
    * empty by the time the reply (text / tool call) or the finish chunk
-   * arrives, the in-flight segment call is awaited up to
-   * `reasoningBlockWaitMs`; its result joins the block above the reply when
-   * it lands in time, otherwise the block closes with the placeholder
-   * (`hide`) or the raw reasoning (`pass-through`) and the late segment
-   * summaries are dropped. The Web Client renders message content blocks
-   * strictly in first-seen order, so without this a late summary would
-   * reopen the reasoning block below the reply text.
+   * arrives, the in-flight segment call is awaited up to `timeoutMs`;
+   * its result joins the block above the reply when it lands in time,
+   * otherwise the block closes with the placeholder (`hide`) or the raw
+   * reasoning (`pass-through`) and the late segment summaries are dropped.
+   * The Web Client renders message content blocks strictly in first-seen
+   * order, so without this a late summary would reopen the reasoning block
+   * below the reply text.
    */
   streamReasoningBlock?: boolean
-  /**
-   * How long a text / tool-call opening is held back for the preferred
-   * pre-reply segment summary, in milliseconds. Only the FIRST segment call
-   * that ends the reasoning phase gets this wait — fire-and-forget midstream
-   * segments never block anything. Bounds the worst-case stall of the reply
-   * (and of the stream tail) introduced by `streamReasoningBlock`.
-   */
-  reasoningBlockWaitMs?: number
 }
 
 /** Configuration schema with documented defaults. */
@@ -206,7 +203,6 @@ export const Config: Schema<CotSummarizerConfig> = z.object({
   typewriter: z.boolean().default(false),
   typewriterIntervalMs: z.number().default(15),
   streamReasoningBlock: z.boolean().default(true),
-  reasoningBlockWaitMs: z.number().default(3000),
 })
 
 /** Configuration after static validation, with every default materialized. */
@@ -233,7 +229,6 @@ export interface ResolvedCotSummarizerConfig {
   typewriter: boolean
   typewriterIntervalMs: number
   streamReasoningBlock: boolean
-  reasoningBlockWaitMs: number
 }
 
 /**
@@ -260,7 +255,6 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
   const typewriter = config.typewriter ?? false
   const typewriterIntervalMs = config.typewriterIntervalMs ?? 15
   const streamReasoningBlock = config.streamReasoningBlock ?? true
-  const reasoningBlockWaitMs = config.reasoningBlockWaitMs ?? 3000
   const language = (config.language ?? '中文').trim()
   const style = config.style ?? 'native'
   const customStyle = (config.customStyle ?? '').trim()
@@ -277,9 +271,6 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
   if (chunkSafetyFactor <= 0) throw new Error('cot-summarizer: chunkSafetyFactor must be > 0')
   if (typewriterIntervalMs < 0 || typewriterIntervalMs > 2000) {
     throw new Error('cot-summarizer: typewriterIntervalMs must be within [0, 2000]')
-  }
-  if (reasoningBlockWaitMs < 0 || reasoningBlockWaitMs > 60000) {
-    throw new Error('cot-summarizer: reasoningBlockWaitMs must be within [0, 60000]')
   }
   if (!SUMMARY_STYLES.includes(style)) {
     throw new Error(`cot-summarizer: unknown summary style "${String(style)}"`)
@@ -322,6 +313,5 @@ export function resolveConfig(config: CotSummarizerConfig = {}): ResolvedCotSumm
     typewriter,
     typewriterIntervalMs,
     streamReasoningBlock,
-    reasoningBlockWaitMs,
   }
 }

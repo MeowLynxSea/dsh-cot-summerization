@@ -492,7 +492,7 @@ async function testStreamReasoningBlockWaitsForSummary() {
   }
   const t0 = Date.now()
   const out = await collect(transformCoTStream(upstream,
-    cfg({ minReasoningChars: 10, reasoningBlockWaitMs: 1000 }), summarize))
+    cfg({ minReasoningChars: 10, timeoutMs: 1000 }), summarize))
   assert.ok(Date.now() - t0 >= 15, 'the reply waited for the segment call')
   const { blocks } = assemble(out)
   assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'text'],
@@ -509,7 +509,7 @@ async function testStreamReasoningBlockWaitsForSummary() {
 async function testStreamReasoningBlockDeadlineDegradesToPlaceholder() {
   // The summarizer outlasts the wait window: the block closes in time with
   // the placeholder (hide policy), the late segment result is dropped, and
-  // the reply is never delayed past `reasoningBlockWaitMs`.
+  // the reply is never delayed past `timeoutMs`.
   const upstream = [
     { type: 'block-start', index: 0, blockType: 'reasoning' },
     { type: 'reasoning-delta', index: 0, text: sentence(0) },
@@ -526,7 +526,7 @@ async function testStreamReasoningBlockDeadlineDegradesToPlaceholder() {
   }
   const t0 = Date.now()
   const out = await collect(transformCoTStream(upstream,
-    cfg({ minReasoningChars: 10, reasoningBlockWaitMs: 30 }), summarize))
+    cfg({ minReasoningChars: 10, timeoutMs: 30 }), summarize))
   const elapsed = Date.now() - t0
   assert.ok(elapsed < 3000, `the reply is not delayed past the wait window (took ${elapsed}ms)`)
   const { blocks } = assemble(out)
@@ -561,7 +561,7 @@ async function testStreamReasoningBlockDeadlinePassThroughShowsRaw() {
     return '晚到的摘要'
   }
   const out = await collect(transformCoTStream(upstream,
-    cfg({ minReasoningChars: 10, reasoningBlockWaitMs: 30, onError: 'pass-through' }), summarize))
+    cfg({ minReasoningChars: 10, timeoutMs: 30, onError: 'pass-through' }), summarize))
   const { blocks } = assemble(out)
   assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'text'])
   assert.ok(blocks[0].text.includes('SECRET step 0'),
@@ -590,7 +590,7 @@ async function testStreamReasoningBlockDeadlineDropShowsNothing() {
   }
   const t0 = Date.now()
   const out = await collect(transformCoTStream(upstream,
-    cfg({ minReasoningChars: 10, reasoningBlockWaitMs: 30, onError: 'drop' }), summarize))
+    cfg({ minReasoningChars: 10, timeoutMs: 30, onError: 'drop' }), summarize))
   assert.ok(Date.now() - t0 < 3000, 'the reply is not delayed past the wait window')
   const { blocks } = assemble(out)
   assert.deepEqual(blocks.map((b) => b.type), ['text'],
@@ -642,7 +642,7 @@ async function testDropKeepsLandedSegmentsOnly() {
     return '迟到的尾巴。'
   }
   const out = await collect(transformCoTStream(upstream,
-    cfg({ minReasoningChars: 10, chunkChars: 60, reasoningBlockWaitMs: 30, onError: 'drop' }), summarize))
+    cfg({ minReasoningChars: 10, chunkChars: 60, timeoutMs: 30, onError: 'drop' }), summarize))
   const { blocks } = assemble(out)
   assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'text'],
     'landed segments keep the Think row above the reply')
@@ -682,7 +682,7 @@ async function testPassThroughKeepsLandedSegments() {
     return '迟到的尾巴。'
   }
   const out = await collect(transformCoTStream(upstream,
-    cfg({ minReasoningChars: 10, chunkChars: 60, reasoningBlockWaitMs: 30, onError: 'pass-through' }), summarize))
+    cfg({ minReasoningChars: 10, chunkChars: 60, timeoutMs: 30, onError: 'pass-through' }), summarize))
   const { blocks } = assemble(out)
   assert.deepEqual(blocks.map((b) => b.type), ['reasoning', 'text'],
     'the Think row stays above the reply')
@@ -714,7 +714,7 @@ async function testStreamReasoningBlockDisabledKeepsLegacyBehavior() {
   }
   const t0 = Date.now()
   const out = await collect(transformCoTStream(upstream,
-    cfg({ minReasoningChars: 10, streamReasoningBlock: false, reasoningBlockWaitMs: 30000 }), summarize))
+    cfg({ minReasoningChars: 10, streamReasoningBlock: false, timeoutMs: 30000 }), summarize))
   assert.ok(Date.now() - t0 < 1000, 'the reply streams without any reasoning-block wait')
   const { blocks } = assemble(out)
   assert.deepEqual(blocks.map((b) => b.type), ['text', 'reasoning'],

@@ -53,20 +53,26 @@ test('the onError dropdown renders every policy the config schema accepts', () =
   }
 })
 
-test('streamReasoningBlock and reasoningBlockWaitMs have settings UI controls', () => {
-  // Both fields exist in the config schema with defaults; without a control
-  // the user cannot perceive or tune the pre-reply ordering fix.
-  for (const field of ['streamReasoningBlock', 'reasoningBlockWaitMs']) {
-    assert.match(source, new RegExp(`draft\\.${field}`),
-      `settings UI must bind draft.${field}`)
-    for (const key of [field, `${field}Hint`]) {
-      const occurrences = source.split(key).length - 1
-      assert.ok(occurrences >= 3, `${key} must appear in EN locale, ZH locale, and the view (found ${occurrences})`)
-    }
+test('streamReasoningBlock has a settings UI control (wait window folds into timeoutMs)', () => {
+  // The field exists in the config schema with a default; without a control
+  // the user cannot perceive or tune the pre-reply ordering fix. Its wait
+  // window is NOT a separate setting — it reuses timeoutMs, so no
+  // reasoningBlockWaitMs control or config key may exist anywhere.
+  assert.match(source, /draft\.streamReasoningBlock/, 'settings UI must bind draft.streamReasoningBlock')
+  for (const key of ['streamReasoningBlock', 'streamReasoningBlockHint']) {
+    const occurrences = source.split(key).length - 1
+    assert.ok(occurrences >= 3, `${key} must appear in EN locale, ZH locale, and the view (found ${occurrences})`)
   }
-  // The wait input is gated on the toggle (same pattern as adaptiveChunk).
-  assert.match(source, /draft\.streamReasoningBlock !== false &&/,
-    'the wait input renders only while streamReasoningBlock is on')
+  assert.doesNotMatch(source, /reasoningBlockWaitMs/,
+    'the pre-reply wait reuses timeoutMs — no separate reasoningBlockWaitMs UI or key')
+})
+
+test('no reasoningBlockWaitMs remains in config or transform sources', () => {
+  for (const file of ['config.ts', 'index.ts']) {
+    const target = readFileSync(join(here, '..', 'src', file), 'utf8')
+    assert.doesNotMatch(target, /reasoningBlockWaitMs/,
+      `src/${file} must not reference the removed reasoningBlockWaitMs setting`)
+  }
 })
 
 test('edits autosave via a dirty flag and a debounce, with no manual save button', () => {
