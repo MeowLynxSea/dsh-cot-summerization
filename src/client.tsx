@@ -79,10 +79,15 @@ const en: Record<string, string> = {
   typewriterHint: 'Push the summary one character at a time instead of whole segments. The stream is serial, so the reply text and the landed message wait behind the reveal (roughly summary length × interval).',
   typewriterIntervalMs: 'Typewriter interval (ms)',
   typewriterIntervalMsHint: 'Delay between two revealed characters; 0 disables the delay.',
+  streamReasoningBlock: 'Keep Think row above the reply',
+  streamReasoningBlockHint: 'When the summary is not ready by the time the reply starts streaming, briefly hold the reply so the Think row never lands below it. Turn off for zero reply delay (a slow summary then trails the reply).',
+  reasoningBlockWaitMs: 'Pre-reply wait (ms)',
+  reasoningBlockWaitMsHint: 'Maximum time the reply is held back for the closing summary; afterwards the row degrades in place per the failure policy below.',
   timeoutMs: 'Request timeout (ms)',
   onError: 'On summarizer failure',
   onErrorHide: 'Hide reasoning',
   onErrorPassThrough: 'Pass raw reasoning through',
+  onErrorDrop: 'Show nothing at all',
   save: 'Save',
   saving: 'Saving…',
   saved: 'Saved',
@@ -140,10 +145,15 @@ const zh: Record<string, string> = {
   typewriterHint: '摘要按字逐个推送到前端，而不是整段推送。由于流是串行的，回复正文与落库会随之等待（约 摘要字数×间隔）。',
   typewriterIntervalMs: '逐字间隔（毫秒）',
   typewriterIntervalMsHint: '每两个字之间的推送间隔；0 表示不延迟。',
+  streamReasoningBlock: '思考行始终在回复上方',
+  streamReasoningBlockHint: '当回复开始流动而摘要尚未就绪时，短暂停住回复，保证 Think 折叠行不会掉到回复下方。关闭后回复零等待（慢的摘要会落在回复之后）。',
+  reasoningBlockWaitMs: '回复前等待（毫秒）',
+  reasoningBlockWaitMsHint: '为收尾段摘要停住回复的最长时间；超时后按下方“总结失败时”策略在原位置降级。',
   timeoutMs: '请求超时（毫秒）',
   onError: '总结失败时',
-  onErrorHide: '隐藏思维链',
+  onErrorHide: '隐藏思维链（显示占位符）',
   onErrorPassThrough: '展示原始思维链',
+  onErrorDrop: '悄无声息（什么都不显示）',
   save: '保存',
   saving: '保存中…',
   saved: '已保存',
@@ -521,6 +531,26 @@ function SettingsSection({ t }: SettingsSectionProps) {
             </Field>
           </>
         )}
+        <Field label={t('streamReasoningBlock')} hint={t('streamReasoningBlockHint')}>
+          <Switch
+            checked={draft.streamReasoningBlock ?? true}
+            onChange={(checked) => { set('streamReasoningBlock', checked) }}
+          />
+        </Field>
+        {draft.streamReasoningBlock !== false && (
+          <Field label={t('reasoningBlockWaitMs')} hint={t('reasoningBlockWaitMsHint')}>
+            <input
+              type="number"
+              min={0}
+              max={60000}
+              value={draft.reasoningBlockWaitMs ?? 3000}
+              onChange={(event) => {
+                const parsed = Number(event.target.value)
+                if (Number.isFinite(parsed)) set('reasoningBlockWaitMs', parsed)
+              }}
+            />
+          </Field>
+        )}
         <Field label={t('timeoutMs')}>
           <input
             type="number"
@@ -539,6 +569,7 @@ function SettingsSection({ t }: SettingsSectionProps) {
           >
             <option value="hide">{t('onErrorHide')}</option>
             <option value="pass-through">{t('onErrorPassThrough')}</option>
+            <option value="drop">{t('onErrorDrop')}</option>
           </select>
         </Field>
       </div>
