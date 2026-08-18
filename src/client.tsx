@@ -228,7 +228,20 @@ type SettingsSectionProps = PropsRuntime<'settings.section'> & SettingsInjected
  * are already self-describing, and the label text is a sibling rather than
  * an associated control.
  */
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, hint, inline = false, children }: { label: string; hint?: string; inline?: boolean; children: React.ReactNode }) {
+  if (inline) {
+    // Boolean settings: label (+hint) on the left, the switch pinned to the
+    // right edge of the same row — one scannable line instead of a stack.
+    return (
+      <div className="dshc-field dshc-field-inline">
+        <div className="dshc-field-text">
+          <span className="dshc-field-label">{label}</span>
+          {hint !== undefined && <span className="dshc-field-hint">{hint}</span>}
+        </div>
+        {children}
+      </div>
+    )
+  }
   return (
     <div className="dshc-field">
       <span className="dshc-field-label">{label}</span>
@@ -331,25 +344,25 @@ function SettingsSection({ t }: SettingsSectionProps) {
         <p>{t('settingsIntro')}</p>
       </div>
       <div className="dshc-grid">
-        <Field label={t('enabled')}>
+        <Field label={t('enabled')} inline>
           <Switch
             checked={draft.enabled ?? true}
             onChange={(checked) => { set('enabled', checked) }}
           />
         </Field>
-        <Field label={t('preserveRawForModel')} hint={t('preserveRawForModelHint')}>
+        <Field label={t('preserveRawForModel')} hint={t('preserveRawForModelHint')} inline>
           <Switch
             checked={draft.preserveRawForModel ?? true}
             onChange={(checked) => { set('preserveRawForModel', checked) }}
           />
         </Field>
-        <Field label={t('incremental')} hint={t('incrementalHint')}>
+        <Field label={t('incremental')} hint={t('incrementalHint')} inline>
           <Switch
             checked={draft.incremental ?? true}
             onChange={(checked) => { set('incremental', checked) }}
           />
         </Field>
-        <Field label={t('typewriter')} hint={t('typewriterHint')}>
+        <Field label={t('typewriter')} hint={t('typewriterHint')} inline>
           <Switch
             checked={draft.typewriter ?? false}
             onChange={(checked) => { set('typewriter', checked) }}
@@ -487,7 +500,7 @@ function SettingsSection({ t }: SettingsSectionProps) {
             }}
           />
         </Field>
-        <Field label={t('adaptiveChunk')} hint={t('adaptiveChunkHint')}>
+        <Field label={t('adaptiveChunk')} hint={t('adaptiveChunkHint')} inline>
           <Switch
             checked={draft.adaptiveChunk ?? true}
             onChange={(checked) => { set('adaptiveChunk', checked) }}
@@ -531,7 +544,7 @@ function SettingsSection({ t }: SettingsSectionProps) {
             </Field>
           </>
         )}
-        <Field label={t('streamReasoningBlock')} hint={t('streamReasoningBlockHint')}>
+        <Field label={t('streamReasoningBlock')} hint={t('streamReasoningBlockHint')} inline>
           <Switch
             checked={draft.streamReasoningBlock ?? true}
             onChange={(checked) => { set('streamReasoningBlock', checked) }}
@@ -585,19 +598,28 @@ function SettingsSection({ t }: SettingsSectionProps) {
 }
 
 const STYLES = `
-.dshc-section { padding: 0 4px 12px; color: var(--dsw-alias-label-primary); }
-.dshc-head h3 { margin: 0 0 4px; font-size: 15px; }
-.dshc-head p { margin: 0 0 14px; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 1.5; }
-.dshc-grid { display: grid; gap: 14px; }
-.dshc-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.dshc-section { padding: 0 4px 16px; color: var(--dsw-alias-label-primary); }
+.dshc-head { margin-bottom: 20px; }
+.dshc-head h3 { margin: 0 0 6px; font-size: 15px; }
+.dshc-head p { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 1.6; }
+.dshc-grid { display: grid; gap: 20px; }
+.dshc-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .dshc-field-label { font-weight: 600; }
 .dshc-field input[type="text"], .dshc-field input[type="password"], .dshc-field input[type="number"], .dshc-field select, .dshc-field textarea {
-  width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 6px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit;
+  width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit;
 }
 .dshc-field input[type="text"]:focus, .dshc-field input[type="password"]:focus, .dshc-field input[type="number"]:focus, .dshc-field select:focus, .dshc-field textarea:focus {
   outline: none; border-color: var(--dsw-alias-border-l4);
 }
+.dshc-field-inline {
+  flex-direction: row; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 14px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+.dshc-field-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.dshc-field-inline .dshc-field-hint { font-size: 12px; }
+.dshc-field-inline .dshc-switch { flex: none; }
 .dshc-switch { position: relative; display: inline-flex; width: 38px; height: 22px; cursor: pointer; }
 .dshc-switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .dshc-switch-track { position: absolute; inset: 0; border-radius: 999px; background: var(--dsw-alias-border-l2); transition: background 0.15s ease; }
@@ -605,9 +627,9 @@ const STYLES = `
 .dshc-switch input:checked + .dshc-switch-track { background: var(--dsw-alias-button-primary-fill); }
 .dshc-switch input:checked + .dshc-switch-track::after { transform: translateX(16px); }
 .dshc-switch input:focus-visible + .dshc-switch-track { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
-.dshc-field-hint { color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 1.4; }
-.dshc-actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
-.dshc-save { padding: 6px 16px; border: 0; border-radius: 6px; background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground); font: inherit; font-size: 13px; cursor: pointer; }
+.dshc-field-hint { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 1.5; }
+.dshc-actions { display: flex; align-items: center; gap: 12px; margin-top: 24px; }
+.dshc-save { padding: 8px 18px; border: 0; border-radius: 8px; background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground); font: inherit; font-size: 13px; cursor: pointer; }
 .dshc-save:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }
 .dshc-save:disabled { opacity: 0.6; cursor: default; }
 .dshc-saved { color: var(--dsw-alias-state-success-primary); font-size: 12px; }
